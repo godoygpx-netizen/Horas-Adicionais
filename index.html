@@ -291,6 +291,16 @@
       </div>
     </div>
 
+    <div class="card">
+      <h2>Backup</h2>
+      <button class="btn-secondary" onclick="exportarBackup()">⬇️ Exportar backup (.json)</button>
+      <label class="btn-secondary" style="display:block; text-align:center; margin-top:8px; cursor:pointer;">
+        ⬆️ Importar backup
+        <input type="file" accept="application/json" style="display:none" onchange="importarBackup(event)">
+      </label>
+      <div class="hint">Exporta configurações e todo o histórico para um arquivo que você pode guardar (Drive, WhatsApp etc.) e importar depois — inclusive em outro aparelho.</div>
+    </div>
+
     <button class="btn-secondary" onclick="salvarConfig(true)">Salvar configurações</button>
   </div>
 
@@ -612,6 +622,51 @@ function renderHistorico() {
       container.appendChild(card);
     });
   });
+}
+
+function exportarBackup() {
+  const dados = {
+    versao: 1,
+    exportadoEm: new Date().toISOString(),
+    config,
+    registros: carregarRegistros()
+  };
+  const blob = new Blob([JSON.stringify(dados, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `horas-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importarBackup(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const dados = JSON.parse(e.target.result);
+      if (!confirm('Importar este backup vai substituir as configurações e o histórico atuais deste aparelho. Continuar?')) return;
+      if (dados.config) {
+        config = dados.config;
+        saveConfigSilent();
+        initSettingsFields();
+        renderTiersCalc();
+      }
+      if (Array.isArray(dados.registros)) {
+        localStorage.setItem(REGISTROS_KEY, JSON.stringify(dados.registros));
+        renderHistorico();
+      }
+      alert('Backup importado com sucesso!');
+    } catch (err) {
+      alert('Não foi possível ler esse arquivo. Confira se é um backup válido.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
 }
 
 // Tabs
