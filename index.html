@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e3a5f">
+<title>Calculadora de Horas</title>
+<link rel="manifest" id="manifest-placeholder">
+<link rel="icon" id="icon-placeholder">
+<link rel="apple-touch-icon" id="apple-icon-placeholder">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1b2b;
+    color: #e8edf4;
+    padding-bottom: 40px;
+  }
+  header {
+    background: linear-gradient(135deg, #1e3a5f, #14293f);
+    padding: 24px 20px 20px;
+    text-align: center;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header p { font-size: 12px; color: #9db4cc; margin-top: 4px; }
+  .tabs {
+    display: flex;
+    background: #14293f;
+    border-bottom: 1px solid #24405f;
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 12px 0;
+    font-size: 13px;
+    color: #9db4cc;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: #4fc3f7; border-bottom-color: #4fc3f7; font-weight: 600; }
+  .content { padding: 16px; max-width: 480px; margin: 0 auto; }
+  .card {
+    background: #17273c;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 14px;
+    border: 1px solid #223a54;
+  }
+  .card h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #7fa8cc;
+    margin-bottom: 12px;
+  }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    color: #b8c9dc;
+    margin-bottom: 5px;
+  }
+  .field .hint { font-size: 11px; color: #5f7d99; margin-top: 3px; }
+  input[type="number"], input[type="text"] {
+    width: 100%;
+    background: #0f1e30;
+    border: 1px solid #2a4763;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #e8edf4;
+    font-size: 15px;
+  }
+  input:focus { outline: none; border-color: #4fc3f7; }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0;
+  }
+  .checkbox-row input { width: 18px; height: 18px; }
+  .checkbox-row label { font-size: 13px; color: #b8c9dc; margin: 0; }
+  .tier-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #1e3450;
+  }
+  .tier-row:last-of-type { border-bottom: none; margin-bottom: 0; padding-bottom: 0;}
+  .tier-row .field { flex: 1; margin-bottom: 0; }
+  .remove-tier {
+    background: #3a1e28;
+    color: #f28b9a;
+    border: none;
+    border-radius: 8px;
+    width: 38px;
+    height: 38px;
+    font-size: 18px;
+    cursor: pointer;
+  }
+  .add-tier {
+    width: 100%;
+    background: #1a3550;
+    color: #4fc3f7;
+    border: 1px dashed #2a5a80;
+    border-radius: 8px;
+    padding: 10px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, #2196f3, #1565c0);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .btn-secondary {
+    width: 100%;
+    background: transparent;
+    color: #7fa8cc;
+    border: 1px solid #2a4763;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 13px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  .result-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid #1e3450;
+    font-size: 13px;
+  }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .label { color: #b8c9dc; }
+  .result-line .sub { font-size: 11px; color: #5f7d99; display: block; }
+  .result-line .value { font-weight: 600; color: #e8edf4; font-size: 14px; }
+  .total-box {
+    background: linear-gradient(135deg, #1b3a2e, #14291f);
+    border: 1px solid #2a5a44;
+    border-radius: 14px;
+    padding: 18px;
+    text-align: center;
+    margin-top: 4px;
+  }
+  .total-box .label { font-size: 12px; color: #8fd4a8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .total-box .value { font-size: 28px; font-weight: 700; color: #a8f0c0; margin-top: 4px; }
+  .hidden { display: none !important; }
+  .saved-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #2a5a44;
+    color: #a8f0c0;
+    padding: 10px 20px;
+    border-radius: 30px;
+    font-size: 13px;
+    transition: transform 0.3s;
+    z-index: 100;
+  }
+  .saved-toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>💰 Horas &amp; Adicionais</h1>
+  <p>Horas extras · adicional noturno · periculosidade</p>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-tab="calc">Calcular</div>
+  <div class="tab" data-tab="settings">Configurações</div>
+</div>
+
+<div class="content">
+
+  <!-- CALCULAR -->
+  <div id="tab-calc">
+    <div class="card">
+      <h2>Horas trabalhadas</h2>
+      <div class="field">
+        <label>Horas normais</label>
+        <input type="number" id="horasNormais" step="0.01" placeholder="ex: 190,67" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>Horas com adicional noturno</label>
+        <input type="number" id="horasNoturno" step="0.01" placeholder="ex: 57,88" inputmode="decimal">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Horas extras</h2>
+      <div id="tiersInputContainer"></div>
+    </div>
+
+    <div class="card">
+      <h2>Periculosidade</h2>
+      <div class="checkbox-row">
+        <input type="checkbox" id="temPericulosidade" checked>
+        <label for="temPericulosidade">Recebo periculosidade neste mês</label>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="calcular()">Calcular</button>
+
+    <div id="resultados" class="hidden" style="margin-top:16px;">
+      <div class="card">
+        <h2>Detalhamento</h2>
+        <div id="resultLines"></div>
+      </div>
+      <div class="total-box">
+        <div class="label">Total do mês</div>
+        <div class="value" id="totalGeral">R$ 0,00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="tab-settings" class="hidden">
+    <div class="card">
+      <h2>Salário base</h2>
+      <div class="field">
+        <label>Valor da hora normal (R$)</label>
+        <input type="number" id="salarioHora" step="0.01" inputmode="decimal">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Adicional noturno</h2>
+      <div class="field">
+        <label>Percentual adicional (%)</label>
+        <input type="number" id="pctNoturno" step="0.01" inputmode="decimal">
+        <div class="hint">Aplicado sobre o valor da hora normal. Padrão CLT: 20%.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Faixas de hora extra</h2>
+      <div id="tiersSettingsContainer"></div>
+      <button class="add-tier" onclick="addTier()">+ Adicionar faixa</button>
+    </div>
+
+    <div class="card">
+      <h2>Periculosidade</h2>
+      <div class="field">
+        <label>Percentual de periculosidade (%)</label>
+        <input type="number" id="pctPericulosidade" step="0.01" inputmode="decimal">
+      </div>
+      <div class="field">
+        <label>Calcular sobre</label>
+        <select id="baseCalcPericulosidade" style="width:100%; background:#0f1e30; border:1px solid #2a4763; border-radius:8px; padding:10px 12px; color:#e8edf4; font-size:15px;">
+          <option value="base">Somente salário base (horas normais)</option>
+          <option value="base_he" selected>Salário base + horas extras</option>
+        </select>
+        <div class="hint">Definido conforme sua última conferência de holerite.</div>
+      </div>
+    </div>
+
+    <button class="btn-secondary" onclick="salvarConfig(true)">Salvar configurações</button>
+  </div>
+
+</div>
+
+<div class="saved-toast" id="toast">Configurações salvas ✓</div>
+
+<script>
+const STORAGE_KEY = 'horasApp_config_v1';
+
+const defaultConfig = {
+  salarioHora: 33.57,
+  pctNoturno: 50,
+  pctPericulosidade: 37.18,
+  baseCalcPericulosidade: 'base_he',
+  tiers: [
+    { nome: 'Horas Extras 75%', pct: 75 },
+    { nome: 'Horas Extras 100%', pct: 100 },
+    { nome: 'Horas Extras 162,5%', pct: 162.5 },
+    { nome: 'Horas Extras 200%', pct: 200 }
+  ]
+};
+
+let config = loadConfig();
+
+function loadConfig() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return JSON.parse(JSON.stringify(defaultConfig));
+}
+
+function saveConfigSilent() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+}
+
+function salvarConfig(showToast) {
+  config.salarioHora = parseFloat(document.getElementById('salarioHora').value) || 0;
+  config.pctNoturno = parseFloat(document.getElementById('pctNoturno').value) || 0;
+  config.pctPericulosidade = parseFloat(document.getElementById('pctPericulosidade').value) || 0;
+  config.baseCalcPericulosidade = document.getElementById('baseCalcPericulosidade').value;
+
+  config.tiers = [];
+  document.querySelectorAll('#tiersSettingsContainer .tier-row').forEach(row => {
+    const nome = row.querySelector('.tier-nome').value || 'Hora extra';
+    const pct = parseFloat(row.querySelector('.tier-pct').value) || 0;
+    config.tiers.push({ nome, pct });
+  });
+
+  saveConfigSilent();
+  renderTiersCalc();
+  if (showToast) {
+    const t = document.getElementById('toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  }
+}
+
+function addTier() {
+  const container = document.getElementById('tiersSettingsContainer');
+  const row = buildTierSettingRow({ nome: 'Nova faixa', pct: 0 });
+  container.appendChild(row);
+}
+
+function buildTierSettingRow(tier) {
+  const row = document.createElement('div');
+  row.className = 'tier-row';
+  row.innerHTML = `
+    <div class="field">
+      <label>Nome</label>
+      <input type="text" class="tier-nome" value="${tier.nome}">
+    </div>
+    <div class="field" style="max-width:90px;">
+      <label>% Adic.</label>
+      <input type="number" class="tier-pct" value="${tier.pct}" step="0.01">
+    </div>
+    <button class="remove-tier" onclick="this.parentElement.remove()">×</button>
+  `;
+  return row;
+}
+
+function renderTiersSettings() {
+  const container = document.getElementById('tiersSettingsContainer');
+  container.innerHTML = '';
+  config.tiers.forEach(t => container.appendChild(buildTierSettingRow(t)));
+}
+
+function renderTiersCalc() {
+  const container = document.getElementById('tiersInputContainer');
+  container.innerHTML = '';
+  config.tiers.forEach((t, i) => {
+    const field = document.createElement('div');
+    field.className = 'field';
+    field.innerHTML = `
+      <label>${t.nome} — horas</label>
+      <input type="number" class="calc-tier-input" data-index="${i}" step="0.01" inputmode="decimal" placeholder="0,00">
+    `;
+    container.appendChild(field);
+  });
+}
+
+function fmt(v) {
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calcular() {
+  const horasNormais = parseFloat(document.getElementById('horasNormais').value) || 0;
+  const horasNoturno = parseFloat(document.getElementById('horasNoturno').value) || 0;
+  const temPericulosidade = document.getElementById('temPericulosidade').checked;
+
+  const valorNormal = horasNormais * config.salarioHora;
+  const valorNoturno = horasNoturno * config.salarioHora * (config.pctNoturno / 100);
+
+  let totalHE = 0;
+  const heLines = [];
+  document.querySelectorAll('.calc-tier-input').forEach(input => {
+    const idx = parseInt(input.dataset.index);
+    const horas = parseFloat(input.value) || 0;
+    const tier = config.tiers[idx];
+    const valorHora = config.salarioHora * (1 + tier.pct / 100);
+    const valor = horas * valorHora;
+    totalHE += valor;
+    if (horas > 0) heLines.push({ nome: tier.nome, horas, valor });
+  });
+
+  let baseParaPericulosidade = valorNormal;
+  if (config.baseCalcPericulosidade === 'base_he') {
+    baseParaPericulosidade = valorNormal + totalHE;
+  }
+  const valorPericulosidade = temPericulosidade ? baseParaPericulosidade * (config.pctPericulosidade / 100) : 0;
+
+  const total = valorNormal + valorNoturno + totalHE + valorPericulosidade;
+
+  const linesEl = document.getElementById('resultLines');
+  linesEl.innerHTML = '';
+
+  function addLine(label, sub, value) {
+    const div = document.createElement('div');
+    div.className = 'result-line';
+    div.innerHTML = `
+      <div class="label">${label}${sub ? `<span class="sub">${sub}</span>` : ''}</div>
+      <div class="value">R$ ${fmt(value)}</div>
+    `;
+    linesEl.appendChild(div);
+  }
+
+  addLine('Salário horista', `${horasNormais.toLocaleString('pt-BR')} h × R$ ${fmt(config.salarioHora)}`, valorNormal);
+  if (horasNoturno > 0) {
+    addLine('Adicional noturno', `${horasNoturno.toLocaleString('pt-BR')} h × ${config.pctNoturno}%`, valorNoturno);
+  }
+  heLines.forEach(l => addLine(l.nome, `${l.horas.toLocaleString('pt-BR')} h`, l.valor));
+  if (temPericulosidade) {
+    addLine('Periculosidade', `${config.pctPericulosidade}% sobre ${config.baseCalcPericulosidade === 'base_he' ? 'base + HE' : 'base'}`, valorPericulosidade);
+  }
+
+  document.getElementById('totalGeral').textContent = `R$ ${fmt(total)}`;
+  document.getElementById('resultados').classList.remove('hidden');
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-calc').classList.toggle('hidden', tab.dataset.tab !== 'calc');
+    document.getElementById('tab-settings').classList.toggle('hidden', tab.dataset.tab !== 'settings');
+  });
+});
+
+// Init
+function initSettingsFields() {
+  document.getElementById('salarioHora').value = config.salarioHora;
+  document.getElementById('pctNoturno').value = config.pctNoturno;
+  document.getElementById('pctPericulosidade').value = config.pctPericulosidade;
+  document.getElementById('baseCalcPericulosidade').value = config.baseCalcPericulosidade;
+  renderTiersSettings();
+}
+
+initSettingsFields();
+renderTiersCalc();
+
+// PWA manifest + icon (inline, no external files needed)
+const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#1565c0"/><text x="256" y="330" font-size="260" text-anchor="middle" fill="white" font-family="Arial, sans-serif">💰</text></svg>`;
+const iconUrl = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgIcon)));
+
+const manifest = {
+  name: 'Horas & Adicionais',
+  short_name: 'Horas',
+  start_url: '.',
+  display: 'standalone',
+  background_color: '#0f1b2b',
+  theme_color: '#1e3a5f',
+  icons: [
+    { src: iconUrl, sizes: '512x512', type: 'image/svg+xml' }
+  ]
+};
+const manifestUrl = 'data:application/manifest+json;base64,' + btoa(unescape(encodeURIComponent(JSON.stringify(manifest))));
+
+document.getElementById('manifest-placeholder').setAttribute('href', manifestUrl);
+document.getElementById('icon-placeholder').setAttribute('href', iconUrl);
+document.getElementById('apple-icon-placeholder').setAttribute('href', iconUrl);
+</script>
+
+</body>
+</html>
