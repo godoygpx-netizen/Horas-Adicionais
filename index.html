@@ -534,6 +534,16 @@ function formatarData(dataStr) {
   return `${dia}/${mes}/${ano}`;
 }
 
+function getDataPagamento(chave) {
+  if (!chave) return '';
+  let [ano, m] = chave.split('-').map(Number);
+  let mFim = m + 1;
+  let anoFim = ano;
+  if (mFim > 12) { mFim = 1; anoFim += 1; }
+  const ultimoDia = new Date(anoFim, mFim, 0).getDate();
+  return `${String(ultimoDia).padStart(2, '0')}/${String(mFim).padStart(2, '0')}/${anoFim}`;
+}
+
 function mesLabel(chave) {
   if (!chave) return 'Ciclo sem data definida';
   const nomes = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -572,7 +582,7 @@ function renderHistorico() {
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:baseline; margin:18px 4px 8px;';
     header.innerHTML = `
-      <div style="font-size:12px; color:#7fa8cc; text-transform:uppercase; letter-spacing:.5px;">${mesLabel(chave)}<br><span style="text-transform:none; color:#5f7d99; font-size:11px;">${horasExtrasCiclo.toLocaleString('pt-BR')} h de hora extra no ciclo</span></div>
+      <div style="font-size:12px; color:#7fa8cc; text-transform:uppercase; letter-spacing:.5px;">${mesLabel(chave)}<br><span style="text-transform:none; color:#5f7d99; font-size:11px;">${horasExtrasCiclo.toLocaleString('pt-BR')} h de hora extra no ciclo · pagamento em ${getDataPagamento(chave)}</span></div>
       <div style="font-size:14px; color:#a8f0c0; font-weight:600;">R$ ${fmt(subtotal)}</div>
     `;
     container.appendChild(header);
