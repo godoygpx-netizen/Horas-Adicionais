@@ -606,22 +606,35 @@ function renderHistorico() {
           <div class="value">R$ ${fmt(l.valor)}</div>
         </div>
       `).join('');
+      const detalheId = `detalhe-${r.id}`;
 
       card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <h2 style="margin:0;">${formatarData(r.data)}</h2>
-          <button class="remove-tier" style="width:32px;height:32px;font-size:16px;" onclick="excluirRegistro('${r.id}')">×</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleDetalhe('${r.id}')">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span id="seta-${r.id}" style="color:#5f7d99; font-size:11px; display:inline-block; transition: transform .2s;">▶</span>
+            <span style="font-size:15px; font-weight:600; color:#e8edf4;">${formatarData(r.data)}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span style="color:#a8f0c0; font-weight:600; font-size:15px;">R$ ${fmt(r.total)}</span>
+            <button class="remove-tier" style="width:32px;height:32px;font-size:16px;" onclick="event.stopPropagation(); excluirRegistro('${r.id}')">×</button>
+          </div>
         </div>
-        ${linhasHtml}
-        ${r.horasExtrasTotal ? `<div class="result-line"><div class="label">Total de horas extras</div><div class="value">${r.horasExtrasTotal.toLocaleString('pt-BR')} h</div></div>` : ''}
-        <div class="result-line" style="border-top:1px solid #2a5a44; margin-top:4px; padding-top:12px;">
-          <div class="label" style="color:#8fd4a8; font-weight:600;">Total</div>
-          <div class="value" style="color:#a8f0c0; font-size:16px;">R$ ${fmt(r.total)}</div>
+        <div id="${detalheId}" class="hidden" style="margin-top:12px; padding-top:12px; border-top:1px solid #1e3450;">
+          ${linhasHtml}
+          ${r.horasExtrasTotal ? `<div class="result-line"><div class="label">Total de horas extras</div><div class="value">${r.horasExtrasTotal.toLocaleString('pt-BR')} h</div></div>` : ''}
         </div>
       `;
       container.appendChild(card);
     });
   });
+}
+
+function toggleDetalhe(id) {
+  const detalhe = document.getElementById(`detalhe-${id}`);
+  const seta = document.getElementById(`seta-${id}`);
+  if (!detalhe) return;
+  detalhe.classList.toggle('hidden');
+  seta.style.transform = detalhe.classList.contains('hidden') ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
 function exportarBackup() {
