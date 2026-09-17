@@ -224,25 +224,6 @@
     </div>
 
     <div class="card">
-      <h2>Calcular por horário (entrada/saída)</h2>
-      <div class="field">
-        <label>Entrada</label>
-        <input type="datetime-local" id="entradaDT">
-      </div>
-      <div class="field">
-        <label>Saída</label>
-        <input type="datetime-local" id="saidaDT">
-      </div>
-      <div class="checkbox-row">
-        <input type="checkbox" id="ehFeriado">
-        <label for="ehFeriado">Considerar feriado (aplica a regra de domingo no período todo)</label>
-      </div>
-      <button class="btn-secondary" onclick="calcularPorHorario()">Calcular e somar nas horas extras</button>
-      <div class="hint" id="horarioResultadoHint"></div>
-      <div class="hint">Classifica automaticamente pelo dia da semana e horário: seg-sex normal (05:01-01:19) e 162,5% (01:20-05:00); sáb 75% (05:01-22:00) e 162,5% (22:01-05:00); dom/feriado 200% (22:01-05:00) e 100% (05:01-22:00).</div>
-    </div>
-
-    <div class="card">
       <h2>Horas extras</h2>
       <div id="tiersInputContainer"></div>
     </div>
@@ -433,98 +414,6 @@ function renderTiersCalc() {
 
 function fmt(v) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-// Classificação por dia da semana + horário, conforme a regra do turno:
-// Semana (seg-sex): 00:00-01:19 normal · 01:20-05:00 HE162,5% · 05:01-24:00 normal
-// Sábado:           00:00-01:19 normal · 01:20-05:00 HE162,5% · 05:01-22:00 HE75% · 22:01-24:00 HE162,5%
-// Domingo/Feriado:  00:00-05:00 HE200% · 05:01-22:00 HE100% · 22:01-24:00 HE200%
-function getTipoDia(date, forcarFeriado) {
-  if (forcarFeriado) return 'feriado';
-  const dia = date.getDay(); // 0=domingo ... 6=sábado
-  if (dia === 0) return 'domingo';
-  if (dia === 6) return 'sabado';
-  return 'semana';
-}
-
-function classificarMinuto(tipoDia, minutoDoDia) {
-  if (tipoDia === 'domingo' || tipoDia === 'feriado') {
-    if (minutoDoDia < 301) return { cat: 'he', pct: 200 };
-    if (minutoDoDia < 1321) return { cat: 'he', pct: 100 };
-    return { cat: 'he', pct: 200 };
-  }
-  if (tipoDia === 'sabado') {
-    if (minutoDoDia < 80) return { cat: 'normal' };
-    if (minutoDoDia < 301) return { cat: 'he', pct: 162.5 };
-    if (minutoDoDia < 1321) return { cat: 'he', pct: 75 };
-    return { cat: 'he', pct: 162.5 };
-  }
-  // semana
-  if (minutoDoDia < 80) return { cat: 'normal' };
-  if (minutoDoDia < 301) return { cat: 'he', pct: 162.5 };
-  return { cat: 'normal' };
-}
-
-function calcularPorHorario() {
-  const entradaVal = document.getElementById('entradaDT').value;
-  const saidaVal = document.getElementById('saidaDT').value;
-  const forcarFeriado = document.getElementById('ehFeriado').checked;
-  const hint = document.getElementById('horarioResultadoHint');
-
-  if (!entradaVal || !saidaVal) {
-    hint.textContent = 'Preencha a entrada e a saída.';
-    return;
-  }
-
-  const entrada = new Date(entradaVal);
-  const saida = new Date(saidaVal);
-
-  if (saida <= entrada) {
-    hint.textContent = 'A saída precisa ser depois da entrada.';
-    return;
-  }
-
-  const totalMinutos = Math.round((saida - entrada) / 60000);
-  const buckets = {};
-  const cursor = new Date(entrada);
-
-  for (let i = 0; i < totalMinutos; i++) {
-    const tipoDia = getTipoDia(cursor, forcarFeriado);
-    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
-    const c = classificarMinuto(tipoDia, minutoDoDia);
-    const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
-    buckets[chave] = (buckets[chave] || 0) + 1;
-    cursor.setMinutes(cursor.getMinutes() + 1);
-  }
-
-  const horasNormaisCalc = (buckets['normal'] || 0) / 60;
-  const campoNormais = document.getElementById('horasNormais');
-  campoNormais.value = ((parseFloat(campoNormais.value) || 0) + horasNormaisCalc).toFixed(2);
-
-  const resumoPartes = [];
-  if (horasNormaisCalc > 0) resumoPartes.push(`${horasNormaisCalc.toLocaleString('pt-BR')}h normal`);
-
-  document.querySelectorAll('.calc-tier-input').forEach(input => {
-    const idx = parseInt(input.dataset.index);
-    const tier = config.tiers[idx];
-    const chave = `he${tier.pct}`;
-    const minutos = buckets[chave] || 0;
-    if (minutos > 0) {
-      const horas = minutos / 60;
-      input.value = ((parseFloat(input.value) || 0) + horas).toFixed(2);
-      resumoPartes.push(`${horas.toLocaleString('pt-BR')}h a ${tier.pct}%`);
-      delete buckets[chave];
-    }
-  });
-
-  const restantes = Object.keys(buckets).filter(k => k !== 'normal');
-  let avisoExtra = '';
-  if (restantes.length > 0) {
-    const detalhes = restantes.map(k => `${(buckets[k] / 60).toLocaleString('pt-BR')}h a ${k.replace('he', '')}%`).join(', ');
-    avisoExtra = ` Atenção: ${detalhes} não têm faixa configurada — adicione essa % em Configurações.`;
-  }
-
-  hint.textContent = `✓ Somado: ${resumoPartes.join(', ') || 'nenhuma hora'}.${avisoExtra}`;
 }
 
 function calcular() {
