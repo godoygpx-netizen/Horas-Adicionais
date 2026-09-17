@@ -755,6 +755,14 @@ function aplicarPericulosidadeCiclo(chave) {
   renderHistorico();
 }
 
+function removerPericulosidadeCiclo(chave) {
+  if (!confirm('Remover a periculosidade aplicada neste ciclo?')) return;
+  let registros = carregarRegistros();
+  registros = registros.filter(r => !(r.ciclo === chave && r.periculosidadeCiclo));
+  localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
+  renderHistorico();
+}
+
 function renderHistorico() {
   const container = document.getElementById('historicoLista');
   const registros = carregarRegistros();
@@ -804,7 +812,13 @@ function renderHistorico() {
           <span>R$ ${fmt(regPericulosidade.total)}</span>
         </div>
       ` : '';
-      const botaoLabel = regPericulosidade ? '🔄 Recalcular periculosidade' : '☣️ Aplicar periculosidade';
+      const botaoLabel = regPericulosidade ? '🔄 Recalcular' : '☣️ Aplicar periculosidade';
+      const botoesPericulosidade = regPericulosidade ? `
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn-secondary" style="flex:1; margin-top:0;" onclick="aplicarPericulosidadeCiclo('${chave}')">${botaoLabel}</button>
+          <button class="btn-secondary" style="flex:1; margin-top:0; color:#f28b9a;" onclick="removerPericulosidadeCiclo('${chave}')">🗑️ Remover</button>
+        </div>
+      ` : `<button class="btn-secondary" style="margin-top:10px;" onclick="aplicarPericulosidadeCiclo('${chave}')">${botaoLabel}</button>`;
 
       const card = document.createElement('div');
       card.className = 'card';
@@ -817,7 +831,7 @@ function renderHistorico() {
           <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
         </div>
         ${faixasHtml || periculosidadeHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${faixasHtml}${periculosidadeHtml}</div>` : ''}
-        <button class="btn-secondary" style="margin-top:10px;" onclick="aplicarPericulosidadeCiclo('${chave}')">${botaoLabel}</button>
+        ${botoesPericulosidade}
       `;
       container.appendChild(card);
     });
