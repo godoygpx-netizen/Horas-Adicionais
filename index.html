@@ -306,8 +306,18 @@
       <div class="field">
         <label>Percentual adicional (%)</label>
         <input type="number" id="pctNoturno" step="0.01" inputmode="decimal">
-        <div class="hint">Aplicado sobre o valor da hora normal. Padrão CLT: 20%.</div>
       </div>
+      <div class="row">
+        <div class="field">
+          <label>Início</label>
+          <input type="time" id="noturnoInicio">
+        </div>
+        <div class="field">
+          <label>Fim</label>
+          <input type="time" id="noturnoFim">
+        </div>
+      </div>
+      <div class="hint">Aplicado sobre o valor da hora normal, para o horário configurado. Padrão CLT: 22:00 às 05:00. Usado também pelo botão "Ponto" para preencher a hora com adicional noturno automaticamente.</div>
     </div>
 
     <div class="card">
@@ -374,6 +384,8 @@ let diaHorarioSelecionado = 'semana';
 const defaultConfig = {
   salarioHora: 33.57,
   pctNoturno: 50,
+  noturnoInicio: '22:00',
+  noturnoFim: '05:00',
   pctPericulosidade: 37.18,
   baseCalcPericulosidade: 'base_he',
   tiers: [
@@ -415,6 +427,8 @@ function loadConfig() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (!parsed.horariosPonto) parsed.horariosPonto = JSON.parse(JSON.stringify(defaultConfig.horariosPonto));
+      if (!parsed.noturnoInicio) parsed.noturnoInicio = defaultConfig.noturnoInicio;
+      if (!parsed.noturnoFim) parsed.noturnoFim = defaultConfig.noturnoFim;
       return parsed;
     }
   } catch (e) {}
@@ -428,6 +442,8 @@ function salvarConfigSilent() {
 function salvarConfig(showToast) {
   config.salarioHora = parseFloat(document.getElementById('salarioHora').value) || 0;
   config.pctNoturno = parseFloat(document.getElementById('pctNoturno').value) || 0;
+  config.noturnoInicio = document.getElementById('noturnoInicio').value || defaultConfig.noturnoInicio;
+  config.noturnoFim = document.getElementById('noturnoFim').value || defaultConfig.noturnoFim;
   config.pctPericulosidade = parseFloat(document.getElementById('pctPericulosidade').value) || 0;
   config.baseCalcPericulosidade = document.getElementById('baseCalcPericulosidade').value;
 
@@ -630,7 +646,12 @@ function finalizarPonto() {
 function classificarPeriodo(inicio, fim, forcarFeriado) {
   const totalMinutos = Math.round((fim - inicio) / 60000);
   const buckets = {};
-  if (totalMinutos <= 0) return { totalMinutos, buckets };
+  let minutosNoturno = 0;
+  if (totalMinutos <= 0) return { totalMinutos, buckets, minutosNoturno };
+
+  const noturnoIni = horaParaMinutos(config.noturnoInicio || defaultConfig.noturnoInicio);
+  const noturnoFim = horaParaMinutos(config.noturnoFim || defaultConfig.noturnoFim);
+
   const cursor = new Date(inicio);
   for (let i = 0; i < totalMinutos; i++) {
     const tipoDia = getTipoDia(cursor, forcarFeriado);
@@ -638,12 +659,18 @@ function classificarPeriodo(inicio, fim, forcarFeriado) {
     const c = classificarMinuto(tipoDia, minutoDoDia);
     const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
     buckets[chave] = (buckets[chave] || 0) + 1;
+
+    const dentroNoturno = noturnoIni <= noturnoFim
+      ? (minutoDoDia >= noturnoIni && minutoDoDia <= noturnoFim)
+      : (minutoDoDia >= noturnoIni || minutoDoDia <= noturnoFim);
+    if (dentroNoturno) minutosNoturno++;
+
     cursor.setMinutes(cursor.getMinutes() + 1);
   }
-  return { totalMinutos, buckets };
+  return { totalMinutos, buckets, minutosNoturno };
 }
 
-function preencherCamposComBuckets(buckets, inicio) {
+function preencherCamposComBuckets(buckets, inicio, minutosNoturno) {
   const restantes = { ...buckets };
 
   const horasNormaisCalc = (restantes['normal'] || 0) / 60;
@@ -651,6 +678,12 @@ function preencherCamposComBuckets(buckets, inicio) {
   document.getElementById('horasNormaisH').value = hmNormal.h;
   document.getElementById('horasNormaisM').value = hmNormal.m;
   delete restantes['normal'];
+
+  if (typeof minutosNoturno === 'number') {
+    const hmNoturno = decimalParaHM(minutosNoturno / 60);
+    document.getElementById('horasNoturnoH').value = hmNoturno.h;
+    document.getElementById('horasNoturnoM').value = hmNoturno.m;
+  }
 
   document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
     const idx = parseInt(inputH.dataset.index);
@@ -686,14 +719,14 @@ function recalcularPonto() {
 
   const inicio = new Date(entradaVal).getTime();
   const fim = new Date(saidaVal).getTime();
-  const { totalMinutos, buckets } = classificarPeriodo(inicio, fim, forcarFeriado);
+  const { totalMinutos, buckets, minutosNoturno } = classificarPeriodo(inicio, fim, forcarFeriado);
 
   if (totalMinutos <= 0) {
     alert('A saída precisa ser depois da entrada.');
     return;
   }
 
-  const restantes = preencherCamposComBuckets(buckets, inicio);
+  const restantes = preencherCamposComBuckets(buckets, inicio, minutosNoturno);
   calcular();
 
   let aviso = '';
@@ -711,10 +744,10 @@ function atualizarCalculoAoVivo(inicio) {
   const agora = Date.now();
   document.getElementById('pontoSaidaInput').value = paraDatetimeLocal(new Date(agora));
 
-  const { totalMinutos, buckets } = classificarPeriodo(inicio, agora, forcarFeriado);
+  const { totalMinutos, buckets, minutosNoturno } = classificarPeriodo(inicio, agora, forcarFeriado);
   if (totalMinutos <= 0) return;
 
-  preencherCamposComBuckets(buckets, inicio);
+  preencherCamposComBuckets(buckets, inicio, minutosNoturno);
   calcular();
 }
 
@@ -1328,6 +1361,8 @@ document.querySelectorAll('.tab').forEach(tab => {
 function initSettingsFields() {
   document.getElementById('salarioHora').value = config.salarioHora;
   document.getElementById('pctNoturno').value = config.pctNoturno;
+  document.getElementById('noturnoInicio').value = config.noturnoInicio || defaultConfig.noturnoInicio;
+  document.getElementById('noturnoFim').value = config.noturnoFim || defaultConfig.noturnoFim;
   document.getElementById('pctPericulosidade').value = config.pctPericulosidade;
   document.getElementById('baseCalcPericulosidade').value = config.baseCalcPericulosidade;
   renderTiersSettings();
