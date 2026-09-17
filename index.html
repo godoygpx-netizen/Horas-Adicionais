@@ -215,11 +215,17 @@
       <h2>Horas trabalhadas</h2>
       <div class="field">
         <label>Horas normais</label>
-        <input type="number" id="horasNormais" step="0.01" placeholder="ex: 190,67" inputmode="decimal">
+        <div class="row">
+          <div class="field"><input type="number" id="horasNormaisH" min="0" step="1" placeholder="horas" inputmode="numeric"></div>
+          <div class="field"><input type="number" id="horasNormaisM" min="0" max="59" step="1" placeholder="min" inputmode="numeric"></div>
+        </div>
       </div>
       <div class="field">
         <label>Horas com adicional noturno</label>
-        <input type="number" id="horasNoturno" step="0.01" placeholder="ex: 57,88" inputmode="decimal">
+        <div class="row">
+          <div class="field"><input type="number" id="horasNoturnoH" min="0" step="1" placeholder="horas" inputmode="numeric"></div>
+          <div class="field"><input type="number" id="horasNoturnoM" min="0" max="59" step="1" placeholder="min" inputmode="numeric"></div>
+        </div>
       </div>
     </div>
 
@@ -348,7 +354,7 @@ function loadConfig() {
   return JSON.parse(JSON.stringify(defaultConfig));
 }
 
-function saveConfigSilent() {
+function salvarConfigSilent() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
@@ -365,7 +371,7 @@ function salvarConfig(showToast) {
     config.tiers.push({ nome, pct });
   });
 
-  saveConfigSilent();
+  salvarConfigSilent();
   renderTiersCalc();
   if (showToast) {
     const t = document.getElementById('toast');
@@ -410,8 +416,11 @@ function renderTiersCalc() {
     const field = document.createElement('div');
     field.className = 'field';
     field.innerHTML = `
-      <label>${t.nome} — horas</label>
-      <input type="number" class="calc-tier-input" data-index="${i}" step="0.01" inputmode="decimal" placeholder="0,00">
+      <label>${t.nome}</label>
+      <div class="row">
+        <div class="field"><input type="number" class="calc-tier-input-h" data-index="${i}" min="0" step="1" inputmode="numeric" placeholder="horas"></div>
+        <div class="field"><input type="number" class="calc-tier-input-m" data-index="${i}" min="0" max="59" step="1" inputmode="numeric" placeholder="min"></div>
+      </div>
     `;
     container.appendChild(field);
   });
@@ -421,9 +430,32 @@ function fmt(v) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function hmParaDecimal(h, m) {
+  const horas = parseInt(h) || 0;
+  const minutos = parseInt(m) || 0;
+  return horas + (minutos / 60);
+}
+
+function decimalParaHM(decimal) {
+  const horas = Math.floor(decimal + 1e-9);
+  const minutos = Math.round((decimal - horas) * 60);
+  return { h: horas, m: minutos };
+}
+
+function fmtHM(decimal) {
+  const { h, m } = decimalParaHM(decimal);
+  return m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
+}
+
 function calcular() {
-  const horasNormais = parseFloat(document.getElementById('horasNormais').value) || 0;
-  const horasNoturno = parseFloat(document.getElementById('horasNoturno').value) || 0;
+  const horasNormais = hmParaDecimal(
+    document.getElementById('horasNormaisH').value,
+    document.getElementById('horasNormaisM').value
+  );
+  const horasNoturno = hmParaDecimal(
+    document.getElementById('horasNoturnoH').value,
+    document.getElementById('horasNoturnoM').value
+  );
   const temPericulosidade = document.getElementById('temPericulosidade').checked;
 
   const valorNormal = horasNormais * config.salarioHora;
@@ -431,9 +463,10 @@ function calcular() {
 
   let totalHE = 0;
   const heLines = [];
-  document.querySelectorAll('.calc-tier-input').forEach(input => {
-    const idx = parseInt(input.dataset.index);
-    const horas = parseFloat(input.value) || 0;
+  document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
+    const idx = parseInt(inputH.dataset.index);
+    const inputM = document.querySelector(`.calc-tier-input-m[data-index="${idx}"]`);
+    const horas = hmParaDecimal(inputH.value, inputM ? inputM.value : 0);
     const tier = config.tiers[idx];
     const valorHora = config.salarioHora * (1 + tier.pct / 100);
     const valor = horas * valorHora;
@@ -462,18 +495,18 @@ function calcular() {
     linesEl.appendChild(div);
   }
 
-  addLine('Salário horista', `${horasNormais.toLocaleString('pt-BR')} h × R$ ${fmt(config.salarioHora)}`, valorNormal);
+  addLine('Salário horista', `${fmtHM(horasNormais)} × R$ ${fmt(config.salarioHora)}`, valorNormal);
   if (horasNoturno > 0) {
-    addLine('Adicional noturno', `${horasNoturno.toLocaleString('pt-BR')} h × ${config.pctNoturno}%`, valorNoturno);
+    addLine('Adicional noturno', `${fmtHM(horasNoturno)} × ${config.pctNoturno}%`, valorNoturno);
   }
-  heLines.forEach(l => addLine(l.nome, `${l.horas.toLocaleString('pt-BR')} h`, l.valor));
+  heLines.forEach(l => addLine(l.nome, fmtHM(l.horas), l.valor));
   const horasExtrasSomaTela = heLines.reduce((s, l) => s + l.horas, 0);
   if (horasExtrasSomaTela > 0) {
     const div = document.createElement('div');
     div.className = 'result-line';
     div.innerHTML = `
       <div class="label">Total de horas extras</div>
-      <div class="value">${horasExtrasSomaTela.toLocaleString('pt-BR')} h</div>
+      <div class="value">${fmtHM(horasExtrasSomaTela)}</div>
     `;
     linesEl.appendChild(div);
   }
@@ -552,16 +585,23 @@ function editarRegistro(id) {
   atualizarDiaSemana();
 
   const linhaNormal = r.linhas.find(l => l.tipo === 'normal');
-  document.getElementById('horasNormais').value = linhaNormal ? linhaNormal.horas : '';
+  const hmNormal = decimalParaHM(linhaNormal ? linhaNormal.horas : 0);
+  document.getElementById('horasNormaisH').value = linhaNormal ? hmNormal.h : '';
+  document.getElementById('horasNormaisM').value = linhaNormal ? hmNormal.m : '';
 
   const linhaNoturno = r.linhas.find(l => l.tipo === 'noturno');
-  document.getElementById('horasNoturno').value = linhaNoturno ? linhaNoturno.horas : '';
+  const hmNoturno = decimalParaHM(linhaNoturno ? linhaNoturno.horas : 0);
+  document.getElementById('horasNoturnoH').value = linhaNoturno ? hmNoturno.h : '';
+  document.getElementById('horasNoturnoM').value = linhaNoturno ? hmNoturno.m : '';
 
-  document.querySelectorAll('.calc-tier-input').forEach(input => {
-    const idx = parseInt(input.dataset.index);
+  document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
+    const idx = parseInt(inputH.dataset.index);
+    const inputM = document.querySelector(`.calc-tier-input-m[data-index="${idx}"]`);
     const tier = config.tiers[idx];
     const linhaHE = r.linhas.find(l => l.tipo === 'he' && l.nome === tier.nome);
-    input.value = linhaHE ? linhaHE.horas : '';
+    const hm = decimalParaHM(linhaHE ? linhaHE.horas : 0);
+    inputH.value = linhaHE ? hm.h : '';
+    if (inputM) inputM.value = linhaHE ? hm.m : '';
   });
 
   document.getElementById('temPericulosidade').checked = r.linhas.some(l => l.tipo === 'periculosidade');
@@ -703,7 +743,7 @@ function renderHistorico() {
       const faixasHtml = faixasOrdenadas.map(nome => `
         <div style="display:flex; justify-content:space-between; font-size:12px; color:#b8c9dc; padding:4px 0;">
           <span>${nome}</span>
-          <span>${porFaixa[nome].toLocaleString('pt-BR')} h</span>
+          <span>${fmtHM(porFaixa[nome])}</span>
         </div>
       `).join('');
 
@@ -713,7 +753,7 @@ function renderHistorico() {
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
             <div style="font-size:14px; font-weight:600; color:#e8edf4;">${mesLabel(chave)}</div>
-            <div style="font-size:11px; color:#5f7d99; margin-top:2px;">${horasExtrasCiclo.toLocaleString('pt-BR')} h de hora extra · ${entradas.length} lançamento${entradas.length > 1 ? 's' : ''} · pagamento em ${getDataPagamento(chave)}</div>
+            <div style="font-size:11px; color:#5f7d99; margin-top:2px;">${fmtHM(horasExtrasCiclo)} de hora extra · ${entradas.length} lançamento${entradas.length > 1 ? 's' : ''} · pagamento em ${getDataPagamento(chave)}</div>
           </div>
           <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
         </div>
@@ -732,7 +772,7 @@ function renderHistorico() {
     const header = document.createElement('div');
     header.style.cssText = 'display:flex; justify-content:space-between; align-items:baseline; margin:18px 4px 8px;';
     header.innerHTML = `
-      <div style="font-size:12px; color:#7fa8cc; text-transform:uppercase; letter-spacing:.5px;">${mesLabel(chave)}<br><span style="text-transform:none; color:#5f7d99; font-size:11px;">${horasExtrasCiclo.toLocaleString('pt-BR')} h de hora extra no ciclo · pagamento em ${getDataPagamento(chave)}</span></div>
+      <div style="font-size:12px; color:#7fa8cc; text-transform:uppercase; letter-spacing:.5px;">${mesLabel(chave)}<br><span style="text-transform:none; color:#5f7d99; font-size:11px;">${fmtHM(horasExtrasCiclo)} de hora extra no ciclo · pagamento em ${getDataPagamento(chave)}</span></div>
       <div style="font-size:14px; color:#a8f0c0; font-weight:600;">R$ ${fmt(subtotal)}</div>
     `;
     container.appendChild(header);
@@ -742,7 +782,7 @@ function renderHistorico() {
       card.className = 'card';
       const linhasHtml = r.linhas.map(l => `
         <div class="result-line">
-          <div class="label">${l.nome}${l.horas ? `<span class="sub">${l.horas.toLocaleString('pt-BR')} h</span>` : ''}</div>
+          <div class="label">${l.nome}${l.horas ? `<span class="sub">${fmtHM(l.horas)}</span>` : ''}</div>
           <div class="value">R$ ${fmt(l.valor)}</div>
         </div>
       `).join('');
@@ -762,7 +802,7 @@ function renderHistorico() {
         </div>
         <div id="${detalheId}" class="hidden" style="margin-top:12px; padding-top:12px; border-top:1px solid #1e3450;">
           ${linhasHtml}
-          ${r.horasExtrasTotal ? `<div class="result-line"><div class="label">Total de horas extras</div><div class="value">${r.horasExtrasTotal.toLocaleString('pt-BR')} h</div></div>` : ''}
+          ${r.horasExtrasTotal ? `<div class="result-line"><div class="label">Total de horas extras</div><div class="value">${fmtHM(r.horasExtrasTotal)}</div></div>` : ''}
         </div>
       `;
       container.appendChild(card);
@@ -806,7 +846,7 @@ function importarBackup(event) {
       if (!confirm('Importar este backup vai substituir as configurações e o histórico atuais deste aparelho. Continuar?')) return;
       if (dados.config) {
         config = dados.config;
-        saveConfigSilent();
+        salvarConfigSilent();
         initSettingsFields();
         renderTiersCalc();
       }
