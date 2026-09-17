@@ -253,6 +253,10 @@
 
   <!-- HISTÓRICO -->
   <div id="tab-historico" class="hidden">
+    <div style="display:flex; gap:8px; margin-bottom:14px;">
+      <button id="btnViewResumo" class="btn-secondary" style="flex:1; margin-top:0;" onclick="setHistoricoView('resumo')">📋 Resumo</button>
+      <button id="btnViewDetalhado" class="btn-secondary" style="flex:1; margin-top:0;" onclick="setHistoricoView('detalhado')">📄 Detalhado</button>
+    </div>
     <div id="historicoLista"></div>
   </div>
 
@@ -319,6 +323,7 @@ const STORAGE_KEY = 'horasApp_config_v1';
 const REGISTROS_KEY = 'horasApp_registros_v1';
 let ultimoCalculo = null;
 let editandoId = null;
+let historicoView = 'resumo';
 
 const defaultConfig = {
   salarioHora: 33.57,
@@ -649,6 +654,17 @@ function mesLabel(chave) {
   return `16/${inicioNome}${inicioAno !== anoFim ? '/' + inicioAno : ''} a 15/${fimNome}/${anoFim}`;
 }
 
+function setHistoricoView(view) {
+  historicoView = view;
+  document.getElementById('btnViewResumo').style.cssText = view === 'resumo'
+    ? 'flex:1; margin-top:0; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
+    : 'flex:1; margin-top:0;';
+  document.getElementById('btnViewDetalhado').style.cssText = view === 'detalhado'
+    ? 'flex:1; margin-top:0; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
+    : 'flex:1; margin-top:0;';
+  renderHistorico();
+}
+
 function renderHistorico() {
   const container = document.getElementById('historicoLista');
   const registros = carregarRegistros();
@@ -666,6 +682,48 @@ function renderHistorico() {
   const chaves = Object.keys(grupos).sort().reverse();
 
   container.innerHTML = '';
+
+  if (historicoView === 'resumo') {
+    chaves.forEach(chave => {
+      const entradas = grupos[chave];
+      const subtotal = entradas.reduce((s, r) => s + r.total, 0);
+      const horasExtrasCiclo = entradas.reduce((s, r) => s + (r.horasExtrasTotal || 0), 0);
+
+      const porFaixa = {};
+      entradas.forEach(r => {
+        r.linhas.filter(l => l.tipo === 'he').forEach(l => {
+          porFaixa[l.nome] = (porFaixa[l.nome] || 0) + l.horas;
+        });
+      });
+      const faixasOrdenadas = Object.keys(porFaixa).sort((a, b) => {
+        const pctA = parseFloat(a.replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
+        const pctB = parseFloat(b.replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
+        return pctA - pctB;
+      });
+      const faixasHtml = faixasOrdenadas.map(nome => `
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#b8c9dc; padding:4px 0;">
+          <span>${nome}</span>
+          <span>${porFaixa[nome].toLocaleString('pt-BR')} h</span>
+        </div>
+      `).join('');
+
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:14px; font-weight:600; color:#e8edf4;">${mesLabel(chave)}</div>
+            <div style="font-size:11px; color:#5f7d99; margin-top:2px;">${horasExtrasCiclo.toLocaleString('pt-BR')} h de hora extra · ${entradas.length} lançamento${entradas.length > 1 ? 's' : ''} · pagamento em ${getDataPagamento(chave)}</div>
+          </div>
+          <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
+        </div>
+        ${faixasHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${faixasHtml}</div>` : ''}
+      `;
+      container.appendChild(card);
+    });
+    return;
+  }
+
   chaves.forEach(chave => {
     const entradas = grupos[chave].slice().sort((a, b) => (b.data || '').localeCompare(a.data || ''));
     const subtotal = entradas.reduce((s, r) => s + r.total, 0);
@@ -773,7 +831,9 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.getElementById('tab-calc').classList.toggle('hidden', tab.dataset.tab !== 'calc');
     document.getElementById('tab-historico').classList.toggle('hidden', tab.dataset.tab !== 'historico');
     document.getElementById('tab-settings').classList.toggle('hidden', tab.dataset.tab !== 'settings');
-    if (tab.dataset.tab === 'historico') renderHistorico();
+    if (tab.dataset.tab === 'historico') {
+      setHistoricoView(historicoView);
+    }
   });
 });
 
@@ -788,7 +848,7 @@ function initSettingsFields() {
 
 initSettingsFields();
 renderTiersCalc();
-renderHistorico();
+setHistoricoView(historicoView);
 if (!document.getElementById('dataRegistro').value) {
   document.getElementById('dataRegistro').valueAsDate = new Date();
 }
