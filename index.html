@@ -196,11 +196,17 @@
 
   <!-- CALCULAR -->
   <div id="tab-calc">
+    <div id="avisoEdicao" class="hidden" style="background:#2a3a1e; border:1px solid #5a7a2a; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:13px; color:#d4e8a8; display:flex; justify-content:space-between; align-items:center;">
+      <span>✏️ Editando o registro de <strong id="avisoEdicaoData"></strong></span>
+      <button onclick="cancelarEdicao()" style="background:none; border:none; color:#d4e8a8; text-decoration:underline; font-size:12px; cursor:pointer;">Cancelar</button>
+    </div>
+
     <div class="card">
       <h2>Referência</h2>
       <div class="field">
         <label>Data</label>
-        <input type="date" id="dataRegistro">
+        <input type="date" id="dataRegistro" onchange="atualizarDiaSemana()">
+        <div class="hint" id="diaSemanaHint"></div>
         <div class="hint">O ciclo vai do dia 16 de um mês até o dia 15 do mês seguinte — o ciclo é calculado automaticamente pela data.</div>
       </div>
     </div>
@@ -215,6 +221,25 @@
         <label>Horas com adicional noturno</label>
         <input type="number" id="horasNoturno" step="0.01" placeholder="ex: 57,88" inputmode="decimal">
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Calcular por horário (entrada/saída)</h2>
+      <div class="field">
+        <label>Entrada</label>
+        <input type="datetime-local" id="entradaDT">
+      </div>
+      <div class="field">
+        <label>Saída</label>
+        <input type="datetime-local" id="saidaDT">
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="ehFeriado">
+        <label for="ehFeriado">Considerar feriado (aplica a regra de domingo no período todo)</label>
+      </div>
+      <button class="btn-secondary" onclick="calcularPorHorario()">Calcular e somar nas horas extras</button>
+      <div class="hint" id="horarioResultadoHint"></div>
+      <div class="hint">Classifica automaticamente pelo dia da semana e horário: seg-sex normal (05:01-01:19) e 162,5% (01:20-05:00); sáb 75% (05:01-22:00) e 162,5% (22:01-05:00); dom/feriado 200% (22:01-05:00) e 100% (05:01-22:00).</div>
     </div>
 
     <div class="card">
@@ -312,6 +337,7 @@
 const STORAGE_KEY = 'horasApp_config_v1';
 const REGISTROS_KEY = 'horasApp_registros_v1';
 let ultimoCalculo = null;
+let editandoId = null;
 
 const defaultConfig = {
   salarioHora: 33.57,
@@ -409,6 +435,98 @@ function fmt(v) {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Classificação por dia da semana + horário, conforme a regra do turno:
+// Semana (seg-sex): 00:00-01:19 normal · 01:20-05:00 HE162,5% · 05:01-24:00 normal
+// Sábado:           00:00-01:19 normal · 01:20-05:00 HE162,5% · 05:01-22:00 HE75% · 22:01-24:00 HE162,5%
+// Domingo/Feriado:  00:00-05:00 HE200% · 05:01-22:00 HE100% · 22:01-24:00 HE200%
+function getTipoDia(date, forcarFeriado) {
+  if (forcarFeriado) return 'feriado';
+  const dia = date.getDay(); // 0=domingo ... 6=sábado
+  if (dia === 0) return 'domingo';
+  if (dia === 6) return 'sabado';
+  return 'semana';
+}
+
+function classificarMinuto(tipoDia, minutoDoDia) {
+  if (tipoDia === 'domingo' || tipoDia === 'feriado') {
+    if (minutoDoDia < 301) return { cat: 'he', pct: 200 };
+    if (minutoDoDia < 1321) return { cat: 'he', pct: 100 };
+    return { cat: 'he', pct: 200 };
+  }
+  if (tipoDia === 'sabado') {
+    if (minutoDoDia < 80) return { cat: 'normal' };
+    if (minutoDoDia < 301) return { cat: 'he', pct: 162.5 };
+    if (minutoDoDia < 1321) return { cat: 'he', pct: 75 };
+    return { cat: 'he', pct: 162.5 };
+  }
+  // semana
+  if (minutoDoDia < 80) return { cat: 'normal' };
+  if (minutoDoDia < 301) return { cat: 'he', pct: 162.5 };
+  return { cat: 'normal' };
+}
+
+function calcularPorHorario() {
+  const entradaVal = document.getElementById('entradaDT').value;
+  const saidaVal = document.getElementById('saidaDT').value;
+  const forcarFeriado = document.getElementById('ehFeriado').checked;
+  const hint = document.getElementById('horarioResultadoHint');
+
+  if (!entradaVal || !saidaVal) {
+    hint.textContent = 'Preencha a entrada e a saída.';
+    return;
+  }
+
+  const entrada = new Date(entradaVal);
+  const saida = new Date(saidaVal);
+
+  if (saida <= entrada) {
+    hint.textContent = 'A saída precisa ser depois da entrada.';
+    return;
+  }
+
+  const totalMinutos = Math.round((saida - entrada) / 60000);
+  const buckets = {};
+  const cursor = new Date(entrada);
+
+  for (let i = 0; i < totalMinutos; i++) {
+    const tipoDia = getTipoDia(cursor, forcarFeriado);
+    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
+    const c = classificarMinuto(tipoDia, minutoDoDia);
+    const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
+    buckets[chave] = (buckets[chave] || 0) + 1;
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+
+  const horasNormaisCalc = (buckets['normal'] || 0) / 60;
+  const campoNormais = document.getElementById('horasNormais');
+  campoNormais.value = ((parseFloat(campoNormais.value) || 0) + horasNormaisCalc).toFixed(2);
+
+  const resumoPartes = [];
+  if (horasNormaisCalc > 0) resumoPartes.push(`${horasNormaisCalc.toLocaleString('pt-BR')}h normal`);
+
+  document.querySelectorAll('.calc-tier-input').forEach(input => {
+    const idx = parseInt(input.dataset.index);
+    const tier = config.tiers[idx];
+    const chave = `he${tier.pct}`;
+    const minutos = buckets[chave] || 0;
+    if (minutos > 0) {
+      const horas = minutos / 60;
+      input.value = ((parseFloat(input.value) || 0) + horas).toFixed(2);
+      resumoPartes.push(`${horas.toLocaleString('pt-BR')}h a ${tier.pct}%`);
+      delete buckets[chave];
+    }
+  });
+
+  const restantes = Object.keys(buckets).filter(k => k !== 'normal');
+  let avisoExtra = '';
+  if (restantes.length > 0) {
+    const detalhes = restantes.map(k => `${(buckets[k] / 60).toLocaleString('pt-BR')}h a ${k.replace('he', '')}%`).join(', ');
+    avisoExtra = ` Atenção: ${detalhes} não têm faixa configurada — adicione essa % em Configurações.`;
+  }
+
+  hint.textContent = `✓ Somado: ${resumoPartes.join(', ') || 'nenhuma hora'}.${avisoExtra}`;
+}
+
 function calcular() {
   const horasNormais = parseFloat(document.getElementById('horasNormais').value) || 0;
   const horasNoturno = parseFloat(document.getElementById('horasNoturno').value) || 0;
@@ -495,12 +613,23 @@ function salvarRegistro() {
     return;
   }
   const registros = carregarRegistros();
-  const registro = {
-    id: Date.now().toString(36),
-    salvoEm: new Date().toISOString(),
-    ...ultimoCalculo
-  };
-  registros.unshift(registro);
+
+  if (editandoId) {
+    const idx = registros.findIndex(r => r.id === editandoId);
+    if (idx !== -1) {
+      registros[idx] = { ...registros[idx], ...ultimoCalculo };
+    }
+    editandoId = null;
+    document.getElementById('avisoEdicao').classList.add('hidden');
+  } else {
+    const registro = {
+      id: Date.now().toString(36),
+      salvoEm: new Date().toISOString(),
+      ...ultimoCalculo
+    };
+    registros.unshift(registro);
+  }
+
   localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
   renderHistorico();
 
@@ -516,6 +645,51 @@ function carregarRegistros() {
     if (raw) return JSON.parse(raw);
   } catch (e) {}
   return [];
+}
+
+function editarRegistro(id) {
+  const registros = carregarRegistros();
+  const r = registros.find(x => x.id === id);
+  if (!r) return;
+
+  editandoId = id;
+
+  document.getElementById('dataRegistro').value = r.data || '';
+  atualizarDiaSemana();
+
+  const linhaNormal = r.linhas.find(l => l.tipo === 'normal');
+  document.getElementById('horasNormais').value = linhaNormal ? linhaNormal.horas : '';
+
+  const linhaNoturno = r.linhas.find(l => l.tipo === 'noturno');
+  document.getElementById('horasNoturno').value = linhaNoturno ? linhaNoturno.horas : '';
+
+  document.querySelectorAll('.calc-tier-input').forEach(input => {
+    const idx = parseInt(input.dataset.index);
+    const tier = config.tiers[idx];
+    const linhaHE = r.linhas.find(l => l.tipo === 'he' && l.nome === tier.nome);
+    input.value = linhaHE ? linhaHE.horas : '';
+  });
+
+  document.getElementById('temPericulosidade').checked = r.linhas.some(l => l.tipo === 'periculosidade');
+
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelector('.tab[data-tab="calc"]').classList.add('active');
+  document.getElementById('tab-calc').classList.remove('hidden');
+  document.getElementById('tab-historico').classList.add('hidden');
+  document.getElementById('tab-settings').classList.add('hidden');
+
+  document.getElementById('resultados').classList.add('hidden');
+
+  const aviso = document.getElementById('avisoEdicao');
+  document.getElementById('avisoEdicaoData').textContent = `${formatarData(r.data)} (${diaSemanaAbrev(r.data)})`;
+  aviso.classList.remove('hidden');
+
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelarEdicao() {
+  editandoId = null;
+  document.getElementById('avisoEdicao').classList.add('hidden');
 }
 
 function excluirRegistro(id) {
@@ -542,6 +716,25 @@ function formatarData(dataStr) {
   if (!dataStr) return 'Sem data';
   const [ano, mes, dia] = dataStr.split('-');
   return `${dia}/${mes}/${ano}`;
+}
+
+function diaSemanaExtenso(dataStr) {
+  if (!dataStr) return '';
+  const dias = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+  const d = new Date(dataStr + 'T00:00:00');
+  return dias[d.getDay()];
+}
+
+function diaSemanaAbrev(dataStr) {
+  if (!dataStr) return '';
+  const dias = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  const d = new Date(dataStr + 'T00:00:00');
+  return dias[d.getDay()];
+}
+
+function atualizarDiaSemana() {
+  const val = document.getElementById('dataRegistro').value;
+  document.getElementById('diaSemanaHint').textContent = val ? diaSemanaExtenso(val) : '';
 }
 
 function getDataPagamento(chave) {
@@ -612,10 +805,11 @@ function renderHistorico() {
         <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleDetalhe('${r.id}')">
           <div style="display:flex; align-items:center; gap:10px;">
             <span id="seta-${r.id}" style="color:#5f7d99; font-size:11px; display:inline-block; transition: transform .2s;">▶</span>
-            <span style="font-size:15px; font-weight:600; color:#e8edf4;">${formatarData(r.data)}</span>
+            <span style="font-size:15px; font-weight:600; color:#e8edf4;">${formatarData(r.data)}<span style="font-weight:400; color:#7fa8cc; font-size:11px;"> (${diaSemanaAbrev(r.data)})</span></span>
           </div>
-          <div style="display:flex; align-items:center; gap:10px;">
+          <div style="display:flex; align-items:center; gap:8px;">
             <span style="color:#a8f0c0; font-weight:600; font-size:15px;">R$ ${fmt(r.total)}</span>
+            <button class="remove-tier" style="width:32px;height:32px;font-size:14px; background:#1a3550; color:#4fc3f7;" onclick="event.stopPropagation(); editarRegistro('${r.id}')">✏️</button>
             <button class="remove-tier" style="width:32px;height:32px;font-size:16px;" onclick="event.stopPropagation(); excluirRegistro('${r.id}')">×</button>
           </div>
         </div>
@@ -709,6 +903,7 @@ renderHistorico();
 if (!document.getElementById('dataRegistro').value) {
   document.getElementById('dataRegistro').valueAsDate = new Date();
 }
+atualizarDiaSemana();
 
 // PWA manifest + icon (inline, no external files needed)
 const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#1565c0"/><text x="256" y="330" font-size="260" text-anchor="middle" fill="white" font-family="Arial, sans-serif">💰</text></svg>`;
