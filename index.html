@@ -209,7 +209,7 @@
       </div>
       <div class="field">
         <label>Entrada</label>
-        <input type="datetime-local" id="pontoEntradaInput">
+        <input type="datetime-local" id="pontoEntradaInput" onchange="pontoEntradaAlterada()">
       </div>
       <div class="field">
         <label>Saída</label>
@@ -712,25 +712,33 @@ function atualizarCalculoAoVivo(inicio) {
   calcular();
 }
 
+function pontoEntradaAlterada() {
+  if (localStorage.getItem(PONTO_KEY)) atualizarUIPonto();
+}
+
 function atualizarUIPonto() {
   const raw = localStorage.getItem(PONTO_KEY);
   if (pontoInterval) { clearInterval(pontoInterval); pontoInterval = null; }
 
   if (raw) {
-    const { inicio, feriado } = JSON.parse(raw);
+    const dados = JSON.parse(raw);
     document.getElementById('pontoBotoesInativo').classList.add('hidden');
     document.getElementById('pontoBotoesAtivo').classList.remove('hidden');
     document.getElementById('pontoElapsedWrap').classList.remove('hidden');
-    document.getElementById('pontoFeriado').checked = !!feriado;
-
-    const atualizarElapsed = () => {
-      const minutos = Math.floor((Date.now() - inicio) / 60000);
-      document.getElementById('pontoElapsed').textContent = fmtHM(Math.max(minutos, 0) / 60);
-    };
+    document.getElementById('pontoFeriado').checked = !!dados.feriado;
 
     const tick = () => {
-      atualizarElapsed();
-      atualizarCalculoAoVivo(inicio);
+      const entradaVal = document.getElementById('pontoEntradaInput').value;
+      const inicioAtual = entradaVal ? new Date(entradaVal).getTime() : dados.inicio;
+
+      if (inicioAtual !== dados.inicio) {
+        dados.inicio = inicioAtual;
+        localStorage.setItem(PONTO_KEY, JSON.stringify(dados));
+      }
+
+      const minutos = Math.floor((Date.now() - inicioAtual) / 60000);
+      document.getElementById('pontoElapsed').textContent = fmtHM(Math.max(minutos, 0) / 60);
+      atualizarCalculoAoVivo(inicioAtual);
     };
 
     tick();
