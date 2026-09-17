@@ -705,6 +705,56 @@ function setHistoricoView(view) {
   renderHistorico();
 }
 
+function dataFimCiclo(chave) {
+  let [ano, m] = chave.split('-').map(Number);
+  let mFim = m + 1;
+  let anoFim = ano;
+  if (mFim > 12) { mFim = 1; anoFim += 1; }
+  return `${anoFim}-${String(mFim).padStart(2, '0')}-15`;
+}
+
+function aplicarPericulosidadeCiclo(chave) {
+  let registros = carregarRegistros();
+
+  const entradasCiclo = registros.filter(r => r.ciclo === chave && !r.periculosidadeCiclo);
+
+  let baseSalario = 0;
+  let baseHE = 0;
+  entradasCiclo.forEach(r => {
+    r.linhas.forEach(l => {
+      if (l.tipo === 'normal') baseSalario += l.valor;
+      if (l.tipo === 'he') baseHE += l.valor;
+    });
+  });
+
+  const base = config.baseCalcPericulosidade === 'base_he' ? baseSalario + baseHE : baseSalario;
+  const valor = base * (config.pctPericulosidade / 100);
+
+  if (valor <= 0) {
+    alert('Não há valores lançados nesse ciclo para calcular a periculosidade.');
+    return;
+  }
+
+  if (!confirm(`Aplicar periculosidade de ${config.pctPericulosidade}% sobre ${config.baseCalcPericulosidade === 'base_he' ? 'base + horas extras' : 'base'} deste ciclo?\n\nValor: R$ ${fmt(valor)}`)) return;
+
+  registros = registros.filter(r => !(r.ciclo === chave && r.periculosidadeCiclo));
+
+  const novoRegistro = {
+    id: Date.now().toString(36),
+    salvoEm: new Date().toISOString(),
+    data: dataFimCiclo(chave),
+    ciclo: chave,
+    periculosidadeCiclo: true,
+    linhas: [{ nome: 'Periculosidade do ciclo', horas: null, valor, tipo: 'periculosidade' }],
+    horasExtrasTotal: 0,
+    total: valor
+  };
+  registros.unshift(novoRegistro);
+
+  localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
+  renderHistorico();
+}
+
 function renderHistorico() {
   const container = document.getElementById('historicoLista');
   const registros = carregarRegistros();
@@ -747,6 +797,15 @@ function renderHistorico() {
         </div>
       `).join('');
 
+      const regPericulosidade = entradas.find(r => r.periculosidadeCiclo);
+      const periculosidadeHtml = regPericulosidade ? `
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#8fd4a8; padding:4px 0;">
+          <span>☣️ Periculosidade do ciclo</span>
+          <span>R$ ${fmt(regPericulosidade.total)}</span>
+        </div>
+      ` : '';
+      const botaoLabel = regPericulosidade ? '🔄 Recalcular periculosidade' : '☣️ Aplicar periculosidade';
+
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -757,7 +816,8 @@ function renderHistorico() {
           </div>
           <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
         </div>
-        ${faixasHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${faixasHtml}</div>` : ''}
+        ${faixasHtml || periculosidadeHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${faixasHtml}${periculosidadeHtml}</div>` : ''}
+        <button class="btn-secondary" style="margin-top:10px;" onclick="aplicarPericulosidadeCiclo('${chave}')">${botaoLabel}</button>
       `;
       container.appendChild(card);
     });
