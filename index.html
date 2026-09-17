@@ -202,6 +202,31 @@
     </div>
 
     <div class="card">
+      <h2>Ponto</h2>
+      <div id="pontoInativo">
+        <div class="checkbox-row">
+          <input type="checkbox" id="pontoFeriado">
+          <label for="pontoFeriado">Hoje é feriado (aplica a regra de domingo)</label>
+        </div>
+        <button class="btn-primary" onclick="iniciarPonto()">▶️ Iniciar turno agora</button>
+        <div class="hint">Classifica automaticamente pelo dia da semana e horário: seg-sex normal (05:01-01:19) e 162,5% (01:20-05:00); sáb 75% (05:01-22:00) e 162,5% (22:01-05:00); dom/feriado 200% (22:01-05:00) e 100% (05:01-22:00).</div>
+      </div>
+      <div id="pontoAtivo" class="hidden">
+        <div style="text-align:center; padding:6px 0 14px;">
+          <div style="font-size:12px; color:#7fa8cc;">Trabalhando desde</div>
+          <div style="font-size:16px; font-weight:600; color:#e8edf4; margin:4px 0;" id="pontoInicioLabel">--</div>
+          <div style="font-size:30px; font-weight:700; color:#4fc3f7;" id="pontoElapsed">0h00</div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="pontoFeriadoAtivo">
+          <label for="pontoFeriadoAtivo">Hoje é feriado (aplica a regra de domingo)</label>
+        </div>
+        <button class="btn-primary" onclick="finalizarPonto()">⏹ Finalizar turno</button>
+        <button class="btn-secondary" onclick="cancelarPonto()">Cancelar turno</button>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Referência</h2>
       <div class="field">
         <label>Data</label>
@@ -308,6 +333,19 @@
     </div>
 
     <div class="card">
+      <h2>Horários do Ponto</h2>
+      <div style="display:flex; gap:6px; margin-bottom:12px;">
+        <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
+        <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
+        <button type="button" id="diaBtn-domingo" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('domingo')">Domingo</button>
+        <button type="button" id="diaBtn-feriado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('feriado')">Feriado</button>
+      </div>
+      <div id="horariosPontoContainer"></div>
+      <button class="add-tier" onclick="addFaixaHorario()">+ Adicionar faixa</button>
+      <div class="hint">Faixas usadas pelo botão "Ponto" (Iniciar/Finalizar turno) na aba Calcular, para classificar automaticamente cada minuto do turno. Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
+    </div>
+
+    <div class="card">
       <h2>Backup</h2>
       <button class="btn-secondary" onclick="exportarBackup()">⬇️ Exportar backup (.json)</button>
       <label class="btn-secondary" style="display:block; text-align:center; margin-top:8px; cursor:pointer;">
@@ -330,6 +368,8 @@ const REGISTROS_KEY = 'horasApp_registros_v1';
 let ultimoCalculo = null;
 let editandoId = null;
 let historicoView = 'resumo';
+let horariosDraft = null;
+let diaHorarioSelecionado = 'semana';
 
 const defaultConfig = {
   salarioHora: 33.57,
@@ -341,7 +381,30 @@ const defaultConfig = {
     { nome: 'Horas Extras 100%', pct: 100 },
     { nome: 'Horas Extras 162,5%', pct: 162.5 },
     { nome: 'Horas Extras 200%', pct: 200 }
-  ]
+  ],
+  horariosPonto: {
+    semana: [
+      { inicio: '00:00', fim: '01:19', pct: 0 },
+      { inicio: '01:20', fim: '05:00', pct: 162.5 },
+      { inicio: '05:01', fim: '23:59', pct: 0 }
+    ],
+    sabado: [
+      { inicio: '00:00', fim: '01:19', pct: 0 },
+      { inicio: '01:20', fim: '05:00', pct: 162.5 },
+      { inicio: '05:01', fim: '22:00', pct: 75 },
+      { inicio: '22:01', fim: '23:59', pct: 162.5 }
+    ],
+    domingo: [
+      { inicio: '00:00', fim: '05:00', pct: 200 },
+      { inicio: '05:01', fim: '22:00', pct: 100 },
+      { inicio: '22:01', fim: '23:59', pct: 200 }
+    ],
+    feriado: [
+      { inicio: '00:00', fim: '05:00', pct: 200 },
+      { inicio: '05:01', fim: '22:00', pct: 100 },
+      { inicio: '22:01', fim: '23:59', pct: 200 }
+    ]
+  }
 };
 
 let config = loadConfig();
@@ -349,7 +412,11 @@ let config = loadConfig();
 function loadConfig() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (!parsed.horariosPonto) parsed.horariosPonto = JSON.parse(JSON.stringify(defaultConfig.horariosPonto));
+      return parsed;
+    }
   } catch (e) {}
   return JSON.parse(JSON.stringify(defaultConfig));
 }
@@ -370,6 +437,9 @@ function salvarConfig(showToast) {
     const pct = parseFloat(row.querySelector('.tier-pct').value) || 0;
     config.tiers.push({ nome, pct });
   });
+
+  sincronizarDraftAtual();
+  config.horariosPonto = horariosDraft;
 
   salvarConfigSilent();
   renderTiersCalc();
@@ -424,6 +494,203 @@ function renderTiersCalc() {
     `;
     container.appendChild(field);
   });
+}
+
+function buildHorarioRow(linha) {
+  const row = document.createElement('div');
+  row.className = 'tier-row horario-row';
+  row.innerHTML = `
+    <div class="field">
+      <label>Início</label>
+      <input type="time" class="horario-inicio" value="${linha.inicio || ''}">
+    </div>
+    <div class="field">
+      <label>Fim</label>
+      <input type="time" class="horario-fim" value="${linha.fim || ''}">
+    </div>
+    <div class="field" style="max-width:78px;">
+      <label>%</label>
+      <input type="number" class="horario-pct" value="${linha.pct}" step="0.01">
+    </div>
+    <button class="remove-tier" onclick="this.parentElement.remove()">×</button>
+  `;
+  return row;
+}
+
+function renderHorariosPonto() {
+  const container = document.getElementById('horariosPontoContainer');
+  if (!container) return;
+  container.innerHTML = '';
+  (horariosDraft[diaHorarioSelecionado] || []).forEach(linha => container.appendChild(buildHorarioRow(linha)));
+}
+
+function addFaixaHorario() {
+  document.getElementById('horariosPontoContainer').appendChild(buildHorarioRow({ inicio: '', fim: '', pct: 0 }));
+}
+
+function lerLinhasHorarioDOM() {
+  return Array.from(document.querySelectorAll('#horariosPontoContainer .horario-row')).map(row => ({
+    inicio: row.querySelector('.horario-inicio').value,
+    fim: row.querySelector('.horario-fim').value,
+    pct: parseFloat(row.querySelector('.horario-pct').value) || 0
+  }));
+}
+
+function sincronizarDraftAtual() {
+  if (!horariosDraft) return;
+  horariosDraft[diaHorarioSelecionado] = lerLinhasHorarioDOM();
+}
+
+function selecionarDiaHorario(dia) {
+  sincronizarDraftAtual();
+  diaHorarioSelecionado = dia;
+  renderHorariosPonto();
+  atualizarBotoesDiaHorario();
+}
+
+function atualizarBotoesDiaHorario() {
+  ['semana', 'sabado', 'domingo', 'feriado'].forEach(d => {
+    const btn = document.getElementById('diaBtn-' + d);
+    if (!btn) return;
+    btn.style.cssText = d === diaHorarioSelecionado
+      ? 'flex:1; margin-top:0; padding:8px; font-size:12px; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
+      : 'flex:1; margin-top:0; padding:8px; font-size:12px;';
+  });
+}
+
+function horaParaMinutos(hhmm) {
+  if (!hhmm) return 0;
+  const [h, m] = hhmm.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+const PONTO_KEY = 'horasApp_pontoAtivo_v1';
+let pontoInterval = null;
+
+// Classificação por dia da semana + horário do turno:
+// Semana (seg-sex): 05:01-01:19 normal · 01:20-05:00 HE162,5%
+// Sábado:           05:01-22:00 HE75% · 22:01-05:00 HE162,5%
+// Domingo/Feriado:  05:01-22:00 HE100% · 22:01-05:00 HE200%
+function getTipoDia(date, forcarFeriado) {
+  if (forcarFeriado) return 'feriado';
+  const dia = date.getDay(); // 0=domingo ... 6=sábado
+  if (dia === 0) return 'domingo';
+  if (dia === 6) return 'sabado';
+  return 'semana';
+}
+
+function classificarMinuto(tipoDia, minutoDoDia) {
+  const janelas = (config.horariosPonto && config.horariosPonto[tipoDia]) || [];
+  for (const j of janelas) {
+    const ini = horaParaMinutos(j.inicio);
+    const fim = horaParaMinutos(j.fim);
+    const dentro = ini <= fim
+      ? (minutoDoDia >= ini && minutoDoDia <= fim)
+      : (minutoDoDia >= ini || minutoDoDia <= fim);
+    if (dentro) {
+      return j.pct > 0 ? { cat: 'he', pct: j.pct } : { cat: 'normal' };
+    }
+  }
+  return { cat: 'normal' };
+}
+
+function iniciarPonto() {
+  const inicio = Date.now();
+  const feriado = document.getElementById('pontoFeriado').checked;
+  localStorage.setItem(PONTO_KEY, JSON.stringify({ inicio, feriado }));
+  atualizarUIPonto();
+}
+
+function cancelarPonto() {
+  if (!confirm('Cancelar o turno em andamento sem calcular as horas?')) return;
+  localStorage.removeItem(PONTO_KEY);
+  atualizarUIPonto();
+}
+
+function finalizarPonto() {
+  const raw = localStorage.getItem(PONTO_KEY);
+  if (!raw) return;
+  const { inicio } = JSON.parse(raw);
+  const fim = Date.now();
+  const forcarFeriado = document.getElementById('pontoFeriadoAtivo').checked;
+
+  const totalMinutos = Math.round((fim - inicio) / 60000);
+  if (totalMinutos <= 0) {
+    alert('O turno precisa durar pelo menos 1 minuto.');
+    return;
+  }
+
+  const buckets = {};
+  const cursor = new Date(inicio);
+  for (let i = 0; i < totalMinutos; i++) {
+    const tipoDia = getTipoDia(cursor, forcarFeriado);
+    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
+    const c = classificarMinuto(tipoDia, minutoDoDia);
+    const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
+    buckets[chave] = (buckets[chave] || 0) + 1;
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+
+  const horasNormaisCalc = (buckets['normal'] || 0) / 60;
+  const hmNormal = decimalParaHM(horasNormaisCalc);
+  document.getElementById('horasNormaisH').value = hmNormal.h;
+  document.getElementById('horasNormaisM').value = hmNormal.m;
+  delete buckets['normal'];
+
+  document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
+    const idx = parseInt(inputH.dataset.index);
+    const inputM = document.querySelector(`.calc-tier-input-m[data-index="${idx}"]`);
+    const tier = config.tiers[idx];
+    const chave = `he${tier.pct}`;
+    const minutos = buckets[chave] || 0;
+    const hm = decimalParaHM(minutos / 60);
+    inputH.value = hm.h;
+    if (inputM) inputM.value = hm.m;
+    delete buckets[chave];
+  });
+
+  const dataInicio = new Date(inicio);
+  document.getElementById('dataRegistro').value =
+    `${dataInicio.getFullYear()}-${String(dataInicio.getMonth() + 1).padStart(2, '0')}-${String(dataInicio.getDate()).padStart(2, '0')}`;
+  atualizarDiaSemana();
+
+  localStorage.removeItem(PONTO_KEY);
+  atualizarUIPonto();
+
+  let aviso = '';
+  const restantes = Object.keys(buckets);
+  if (restantes.length > 0) {
+    const detalhes = restantes.map(k => `${fmtHM(buckets[k] / 60)} a ${k.replace('he', '')}%`).join(', ');
+    aviso = `\n\nAtenção: ${detalhes} não têm faixa configurada em Configurações e não foram preenchidas.`;
+  }
+
+  alert(`Turno finalizado: ${fmtHM(totalMinutos / 60)} classificadas automaticamente.${aviso}\n\nConfira os campos abaixo e toque em "Calcular".`);
+}
+
+function atualizarUIPonto() {
+  const raw = localStorage.getItem(PONTO_KEY);
+  if (pontoInterval) { clearInterval(pontoInterval); pontoInterval = null; }
+
+  if (raw) {
+    const { inicio, feriado } = JSON.parse(raw);
+    document.getElementById('pontoInativo').classList.add('hidden');
+    document.getElementById('pontoAtivo').classList.remove('hidden');
+    document.getElementById('pontoFeriadoAtivo').checked = !!feriado;
+
+    const d = new Date(inicio);
+    document.getElementById('pontoInicioLabel').textContent =
+      `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} às ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+    const atualizarElapsed = () => {
+      const minutos = Math.floor((Date.now() - inicio) / 60000);
+      document.getElementById('pontoElapsed').textContent = fmtHM(Math.max(minutos, 0) / 60);
+    };
+    atualizarElapsed();
+    pontoInterval = setInterval(atualizarElapsed, 15000);
+  } else {
+    document.getElementById('pontoInativo').classList.remove('hidden');
+    document.getElementById('pontoAtivo').classList.add('hidden');
+  }
 }
 
 function fmt(v) {
@@ -958,11 +1225,16 @@ function initSettingsFields() {
   document.getElementById('pctPericulosidade').value = config.pctPericulosidade;
   document.getElementById('baseCalcPericulosidade').value = config.baseCalcPericulosidade;
   renderTiersSettings();
+
+  horariosDraft = JSON.parse(JSON.stringify(config.horariosPonto || defaultConfig.horariosPonto));
+  renderHorariosPonto();
+  atualizarBotoesDiaHorario();
 }
 
 initSettingsFields();
 renderTiersCalc();
 setHistoricoView(historicoView);
+atualizarUIPonto();
 if (!document.getElementById('dataRegistro').value) {
   document.getElementById('dataRegistro').valueAsDate = new Date();
 }
