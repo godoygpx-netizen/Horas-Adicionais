@@ -262,14 +262,6 @@
       <div id="tiersInputContainer"></div>
     </div>
 
-    <div class="card">
-      <h2>Periculosidade</h2>
-      <div class="checkbox-row">
-        <input type="checkbox" id="temPericulosidade" checked>
-        <label for="temPericulosidade">Recebo periculosidade neste mês</label>
-      </div>
-    </div>
-
     <button class="btn-primary" onclick="calcular()">Calcular</button>
 
     <div id="resultados" class="hidden" style="margin-top:16px;">
@@ -278,7 +270,7 @@
         <div id="resultLines"></div>
       </div>
       <div class="total-box">
-        <div class="label">Total do mês</div>
+        <div class="label">Total do lançamento</div>
         <div class="value" id="totalGeral">R$ 0,00</div>
       </div>
       <button class="btn-secondary" onclick="salvarRegistro()">💾 Salvar no histórico</button>
@@ -331,7 +323,7 @@
           <option value="base">Somente salário base (horas normais)</option>
           <option value="base_he" selected>Salário base + horas extras</option>
         </select>
-        <div class="hint">Definido conforme sua última conferência de holerite.</div>
+        <div class="hint">Aplicada por ciclo (16 a 15) através do botão "☣️ Aplicar periculosidade" na aba Histórico → Resumo, sobre o total de lançamentos daquele ciclo.</div>
       </div>
     </div>
 
@@ -629,6 +621,53 @@ function finalizarPonto() {
   recalcularPonto();
 }
 
+function classificarPeriodo(inicio, fim, forcarFeriado) {
+  const totalMinutos = Math.round((fim - inicio) / 60000);
+  const buckets = {};
+  if (totalMinutos <= 0) return { totalMinutos, buckets };
+  const cursor = new Date(inicio);
+  for (let i = 0; i < totalMinutos; i++) {
+    const tipoDia = getTipoDia(cursor, forcarFeriado);
+    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
+    const c = classificarMinuto(tipoDia, minutoDoDia);
+    const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
+    buckets[chave] = (buckets[chave] || 0) + 1;
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  return { totalMinutos, buckets };
+}
+
+function preencherCamposComBuckets(buckets, inicio) {
+  const restantes = { ...buckets };
+
+  const horasNormaisCalc = (restantes['normal'] || 0) / 60;
+  const hmNormal = decimalParaHM(horasNormaisCalc);
+  document.getElementById('horasNormaisH').value = hmNormal.h;
+  document.getElementById('horasNormaisM').value = hmNormal.m;
+  delete restantes['normal'];
+
+  document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
+    const idx = parseInt(inputH.dataset.index);
+    const inputM = document.querySelector(`.calc-tier-input-m[data-index="${idx}"]`);
+    const tier = config.tiers[idx];
+    const chave = `he${tier.pct}`;
+    const minutos = restantes[chave] || 0;
+    const hm = decimalParaHM(minutos / 60);
+    inputH.value = hm.h;
+    if (inputM) inputM.value = hm.m;
+    delete restantes[chave];
+  });
+
+  if (inicio) {
+    const dataInicio = new Date(inicio);
+    document.getElementById('dataRegistro').value =
+      `${dataInicio.getFullYear()}-${String(dataInicio.getMonth() + 1).padStart(2, '0')}-${String(dataInicio.getDate()).padStart(2, '0')}`;
+    atualizarDiaSemana();
+  }
+
+  return restantes;
+}
+
 function recalcularPonto() {
   const entradaVal = document.getElementById('pontoEntradaInput').value;
   const saidaVal = document.getElementById('pontoSaidaInput').value;
@@ -641,55 +680,36 @@ function recalcularPonto() {
 
   const inicio = new Date(entradaVal).getTime();
   const fim = new Date(saidaVal).getTime();
-  const totalMinutos = Math.round((fim - inicio) / 60000);
+  const { totalMinutos, buckets } = classificarPeriodo(inicio, fim, forcarFeriado);
 
   if (totalMinutos <= 0) {
     alert('A saída precisa ser depois da entrada.');
     return;
   }
 
-  const buckets = {};
-  const cursor = new Date(inicio);
-  for (let i = 0; i < totalMinutos; i++) {
-    const tipoDia = getTipoDia(cursor, forcarFeriado);
-    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
-    const c = classificarMinuto(tipoDia, minutoDoDia);
-    const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
-    buckets[chave] = (buckets[chave] || 0) + 1;
-    cursor.setMinutes(cursor.getMinutes() + 1);
-  }
-
-  const horasNormaisCalc = (buckets['normal'] || 0) / 60;
-  const hmNormal = decimalParaHM(horasNormaisCalc);
-  document.getElementById('horasNormaisH').value = hmNormal.h;
-  document.getElementById('horasNormaisM').value = hmNormal.m;
-  delete buckets['normal'];
-
-  document.querySelectorAll('.calc-tier-input-h').forEach(inputH => {
-    const idx = parseInt(inputH.dataset.index);
-    const inputM = document.querySelector(`.calc-tier-input-m[data-index="${idx}"]`);
-    const tier = config.tiers[idx];
-    const chave = `he${tier.pct}`;
-    const minutos = buckets[chave] || 0;
-    const hm = decimalParaHM(minutos / 60);
-    inputH.value = hm.h;
-    if (inputM) inputM.value = hm.m;
-    delete buckets[chave];
-  });
-
-  const dataInicio = new Date(inicio);
-  document.getElementById('dataRegistro').value =
-    `${dataInicio.getFullYear()}-${String(dataInicio.getMonth() + 1).padStart(2, '0')}-${String(dataInicio.getDate()).padStart(2, '0')}`;
-  atualizarDiaSemana();
+  const restantes = preencherCamposComBuckets(buckets, inicio);
+  calcular();
 
   let aviso = '';
-  const restantes = Object.keys(buckets);
-  if (restantes.length > 0) {
-    const detalhes = restantes.map(k => `${fmtHM(buckets[k] / 60)} a ${k.replace('he', '')}%`).join(', ');
+  const chaves = Object.keys(restantes);
+  if (chaves.length > 0) {
+    const detalhes = chaves.map(k => `${fmtHM(restantes[k] / 60)} a ${k.replace('he', '')}%`).join(', ');
     aviso = `\n\nAtenção: ${detalhes} não têm faixa configurada em Configurações e não foram preenchidas.`;
   }
 
-  alert(`${fmtHM(totalMinutos / 60)} classificadas automaticamente.${aviso}\n\nConfira os campos abaixo e toque em "Calcular".`);
+  alert(`${fmtHM(totalMinutos / 60)} classificadas automaticamente.${aviso}\n\nConfira o detalhamento abaixo.`);
+}
+
+function atualizarCalculoAoVivo(inicio) {
+  const forcarFeriado = document.getElementById('pontoFeriado').checked;
+  const agora = Date.now();
+  document.getElementById('pontoSaidaInput').value = paraDatetimeLocal(new Date(agora));
+
+  const { totalMinutos, buckets } = classificarPeriodo(inicio, agora, forcarFeriado);
+  if (totalMinutos <= 0) return;
+
+  preencherCamposComBuckets(buckets, inicio);
+  calcular();
 }
 
 function atualizarUIPonto() {
@@ -707,8 +727,14 @@ function atualizarUIPonto() {
       const minutos = Math.floor((Date.now() - inicio) / 60000);
       document.getElementById('pontoElapsed').textContent = fmtHM(Math.max(minutos, 0) / 60);
     };
-    atualizarElapsed();
-    pontoInterval = setInterval(atualizarElapsed, 15000);
+
+    const tick = () => {
+      atualizarElapsed();
+      atualizarCalculoAoVivo(inicio);
+    };
+
+    tick();
+    pontoInterval = setInterval(tick, 15000);
   } else {
     document.getElementById('pontoBotoesInativo').classList.remove('hidden');
     document.getElementById('pontoBotoesAtivo').classList.add('hidden');
@@ -746,7 +772,6 @@ function calcular() {
     document.getElementById('horasNoturnoH').value,
     document.getElementById('horasNoturnoM').value
   );
-  const temPericulosidade = document.getElementById('temPericulosidade').checked;
 
   const valorNormal = horasNormais * config.salarioHora;
   const valorNoturno = horasNoturno * config.salarioHora * (config.pctNoturno / 100);
@@ -764,13 +789,7 @@ function calcular() {
     if (horas > 0) heLines.push({ nome: tier.nome, horas, valor });
   });
 
-  let baseParaPericulosidade = valorNormal;
-  if (config.baseCalcPericulosidade === 'base_he') {
-    baseParaPericulosidade = valorNormal + totalHE;
-  }
-  const valorPericulosidade = temPericulosidade ? baseParaPericulosidade * (config.pctPericulosidade / 100) : 0;
-
-  const total = valorNormal + valorNoturno + totalHE + valorPericulosidade;
+  const total = valorNormal + valorNoturno + totalHE;
 
   const linesEl = document.getElementById('resultLines');
   linesEl.innerHTML = '';
@@ -785,7 +804,9 @@ function calcular() {
     linesEl.appendChild(div);
   }
 
-  addLine('Salário horista', `${fmtHM(horasNormais)} × R$ ${fmt(config.salarioHora)}`, valorNormal);
+  if (horasNormais > 0) {
+    addLine('Salário horista', `${fmtHM(horasNormais)} × R$ ${fmt(config.salarioHora)}`, valorNormal);
+  }
   if (horasNoturno > 0) {
     addLine('Adicional noturno', `${fmtHM(horasNoturno)} × ${config.pctNoturno}%`, valorNoturno);
   }
@@ -800,9 +821,6 @@ function calcular() {
     `;
     linesEl.appendChild(div);
   }
-  if (temPericulosidade) {
-    addLine('Periculosidade', `${config.pctPericulosidade}% sobre ${config.baseCalcPericulosidade === 'base_he' ? 'base + HE' : 'base'}`, valorPericulosidade);
-  }
 
   document.getElementById('totalGeral').textContent = `R$ ${fmt(total)}`;
   document.getElementById('resultados').classList.remove('hidden');
@@ -811,7 +829,6 @@ function calcular() {
   linhas.push({ nome: 'Salário horista', horas: horasNormais, valor: valorNormal, tipo: 'normal' });
   if (horasNoturno > 0) linhas.push({ nome: 'Adicional noturno', horas: horasNoturno, valor: valorNoturno, tipo: 'noturno' });
   heLines.forEach(l => linhas.push({ nome: l.nome, horas: l.horas, valor: l.valor, tipo: 'he' }));
-  if (temPericulosidade) linhas.push({ nome: 'Periculosidade', horas: null, valor: valorPericulosidade, tipo: 'periculosidade' });
 
   const horasExtrasTotal = heLines.reduce((s, l) => s + l.horas, 0);
 
@@ -903,8 +920,6 @@ function editarRegistro(id) {
     inputH.value = linhaHE ? hm.h : '';
     if (inputM) inputM.value = linhaHE ? hm.m : '';
   });
-
-  document.getElementById('temPericulosidade').checked = r.linhas.some(l => l.tipo === 'periculosidade');
 
   document.getElementById('pontoEntradaInput').value = r.pontoEntrada || '';
   document.getElementById('pontoSaidaInput').value = r.pontoSaida || '';
