@@ -207,6 +207,10 @@
         <input type="checkbox" id="pontoFeriado">
         <label for="pontoFeriado">Considerar feriado (aplica a regra de domingo)</label>
       </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="pontoNotificar" onchange="alternarNotificacaoPonto()">
+        <label for="pontoNotificar">🔔 Avisar quando começar/mudar hora extra</label>
+      </div>
       <div class="field">
         <label>Entrada</label>
         <input type="datetime-local" id="pontoEntradaInput" onchange="pontoEntradaAlterada()">
@@ -218,6 +222,7 @@
       <div id="pontoElapsedWrap" class="hidden" style="text-align:center; padding:2px 0 12px;">
         <div style="font-size:12px; color:#7fa8cc;">Turno em andamento</div>
         <div style="font-size:28px; font-weight:700; color:#4fc3f7;" id="pontoElapsed">0h00</div>
+        <div style="font-size:13px; color:#8fd4a8; margin-top:6px;" id="pontoCategoriaAtual"></div>
       </div>
       <div id="pontoBotoesInativo">
         <button class="btn-primary" onclick="iniciarPonto()">▶️ Iniciar turno agora</button>
@@ -605,6 +610,7 @@ function iniciarPonto() {
   localStorage.setItem(PONTO_KEY, JSON.stringify({ inicio, feriado }));
   document.getElementById('pontoEntradaInput').value = paraDatetimeLocal(new Date(inicio));
   document.getElementById('pontoSaidaInput').value = '';
+  ultimaCategoriaPonto = null;
   atualizarUIPonto();
 }
 
@@ -712,6 +718,44 @@ function atualizarCalculoAoVivo(inicio) {
   calcular();
 }
 
+const PONTO_NOTIFICAR_KEY = 'horasApp_pontoNotificar_v1';
+let ultimaCategoriaPonto = null;
+
+function alternarNotificacaoPonto() {
+  const checkbox = document.getElementById('pontoNotificar');
+  if (checkbox.checked && 'Notification' in window && Notification.permission !== 'granted') {
+    Notification.requestPermission().then(perm => {
+      if (perm !== 'granted') {
+        alert('Permissão de notificação negada. O aviso vai aparecer só na tela do app enquanto ele estiver aberto.');
+      }
+    });
+  }
+  localStorage.setItem(PONTO_NOTIFICAR_KEY, checkbox.checked ? '1' : '0');
+}
+
+function categoriaAgora(forcarFeriado) {
+  const agora = new Date();
+  const tipoDia = getTipoDia(agora, forcarFeriado);
+  const minutoDoDia = agora.getHours() * 60 + agora.getMinutes();
+  const c = classificarMinuto(tipoDia, minutoDoDia);
+  return c.cat === 'normal' ? 'Hora normal' : `Hora extra ${c.pct}%`;
+}
+
+function checarMudancaCategoria(forcarFeriado) {
+  const badge = document.getElementById('pontoCategoriaAtual');
+  const categoriaAtual = categoriaAgora(forcarFeriado);
+  if (badge) badge.textContent = `Agora: ${categoriaAtual}`;
+
+  if (ultimaCategoriaPonto && ultimaCategoriaPonto !== categoriaAtual) {
+    const mensagem = `Mudou de "${ultimaCategoriaPonto}" para "${categoriaAtual}"`;
+    const notificarLigado = localStorage.getItem(PONTO_NOTIFICAR_KEY) === '1';
+    if (notificarLigado && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification('⏱️ Horas & Adicionais', { body: mensagem });
+    }
+  }
+  ultimaCategoriaPonto = categoriaAtual;
+}
+
 function pontoEntradaAlterada() {
   if (localStorage.getItem(PONTO_KEY)) atualizarUIPonto();
 }
@@ -739,6 +783,7 @@ function atualizarUIPonto() {
       const minutos = Math.floor((Date.now() - inicioAtual) / 60000);
       document.getElementById('pontoElapsed').textContent = fmtHM(Math.max(minutos, 0) / 60);
       atualizarCalculoAoVivo(inicioAtual);
+      checarMudancaCategoria(document.getElementById('pontoFeriado').checked);
     };
 
     tick();
@@ -1295,6 +1340,7 @@ function initSettingsFields() {
 initSettingsFields();
 renderTiersCalc();
 setHistoricoView(historicoView);
+document.getElementById('pontoNotificar').checked = localStorage.getItem(PONTO_NOTIFICAR_KEY) === '1';
 atualizarUIPonto();
 if (!document.getElementById('dataRegistro').value) {
   document.getElementById('dataRegistro').valueAsDate = new Date();
