@@ -207,6 +207,10 @@
 
     <div class="card" id="cardPonto">
       <h2>Ponto</h2>
+      <div class="field">
+        <label>Turno</label>
+        <select id="turnoPontoSelect" onchange="salvarTurnoPontoSelecionado()" style="width:100%; background:#0f1e30; border:1px solid #2a4763; border-radius:8px; padding:10px 12px; color:#e8edf4; font-size:15px;"></select>
+      </div>
       <div class="checkbox-row">
         <input type="checkbox" id="pontoFeriado">
         <label for="pontoFeriado">Considerar feriado (aplica a regra de domingo)</label>
@@ -322,7 +326,12 @@
           <input type="time" id="noturnoFim">
         </div>
       </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="noturnoHoraReduzida">
+        <label for="noturnoHoraReduzida">Aplicar hora reduzida (fictícia)</label>
+      </div>
       <div class="hint">Aplicado sobre o valor da hora normal, para o horário configurado. Padrão CLT: 22:00 às 05:00. Usado também pelo botão "Ponto" para preencher a hora com adicional noturno automaticamente.</div>
+      <div class="hint">Hora reduzida: cada hora noturna trabalhada (52min30s) é contada como 1h remunerada — as horas de relógio do período noturno são multiplicadas por ≈1,1428 (60 ÷ 52,5) antes de calcular o adicional. Aplicado apenas pelo botão Ponto.</div>
     </div>
 
     <div class="card">
@@ -349,6 +358,15 @@
 
     <div class="card">
       <h2>Horários do Ponto</h2>
+      <div style="display:flex; gap:6px; margin-bottom:10px;">
+        <button type="button" id="turnoConfigBtn-turno1" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno1')">1º Turno</button>
+        <button type="button" id="turnoConfigBtn-turno2" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno2')">2º Turno</button>
+        <button type="button" id="turnoConfigBtn-turno3" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno3')">3º Turno</button>
+      </div>
+      <div class="field">
+        <label>Nome deste turno</label>
+        <input type="text" id="turnoNomeInput" onchange="renomearTurnoAtual()">
+      </div>
       <div style="display:flex; gap:6px; margin-bottom:12px;">
         <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
         <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
@@ -357,7 +375,7 @@
       </div>
       <div id="horariosPontoContainer"></div>
       <button class="add-tier" onclick="addFaixaHorario()">+ Adicionar faixa</button>
-      <div class="hint">Faixas usadas pelo botão "Ponto" (Iniciar/Finalizar turno) na aba Calcular, para classificar automaticamente cada minuto do turno. Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
+      <div class="hint">Configure os 3 turnos separadamente (nome e horários próprios). O turno usado em cada cálculo é escolhido no seletor "Turno" dentro do card Ponto, na aba Calcular. Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
     </div>
 
     <div class="card">
@@ -461,7 +479,8 @@ const REGISTROS_KEY = 'horasApp_registros_v1';
 let ultimoCalculo = null;
 let editandoId = null;
 let historicoView = 'resumo';
-let horariosDraft = null;
+let turnosDraft = null;
+let turnoSelecionadoConfig = 'turno1';
 let diaHorarioSelecionado = 'semana';
 
 const defaultConfig = {
@@ -469,6 +488,7 @@ const defaultConfig = {
   pctNoturno: 50,
   noturnoInicio: '22:00',
   noturnoFim: '05:00',
+  noturnoHoraReduzida: true,
   pctPericulosidade: 37.18,
   baseCalcPericulosidade: 'base_he',
   intervalos: {
@@ -485,28 +505,79 @@ const defaultConfig = {
     { nome: 'Horas Extras 162,5%', pct: 162.5 },
     { nome: 'Horas Extras 200%', pct: 200 }
   ],
-  horariosPonto: {
-    semana: [
-      { inicio: '00:00', fim: '01:19', pct: 0 },
-      { inicio: '01:20', fim: '05:00', pct: 162.5 },
-      { inicio: '05:01', fim: '23:59', pct: 0 }
-    ],
-    sabado: [
-      { inicio: '00:00', fim: '01:19', pct: 0 },
-      { inicio: '01:20', fim: '05:00', pct: 162.5 },
-      { inicio: '05:01', fim: '22:00', pct: 75 },
-      { inicio: '22:01', fim: '23:59', pct: 162.5 }
-    ],
-    domingo: [
-      { inicio: '00:00', fim: '05:00', pct: 200 },
-      { inicio: '05:01', fim: '22:00', pct: 100 },
-      { inicio: '22:01', fim: '23:59', pct: 200 }
-    ],
-    feriado: [
-      { inicio: '00:00', fim: '05:00', pct: 200 },
-      { inicio: '05:01', fim: '22:00', pct: 100 },
-      { inicio: '22:01', fim: '23:59', pct: 200 }
-    ]
+  turnos: {
+    turno1: {
+      nome: '1º Turno',
+      semana: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '23:59', pct: 0 }
+      ],
+      sabado: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '22:00', pct: 75 },
+        { inicio: '22:01', fim: '23:59', pct: 162.5 }
+      ],
+      domingo: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ],
+      feriado: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ]
+    },
+    turno2: {
+      nome: '2º Turno',
+      semana: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '23:59', pct: 0 }
+      ],
+      sabado: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '22:00', pct: 75 },
+        { inicio: '22:01', fim: '23:59', pct: 162.5 }
+      ],
+      domingo: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ],
+      feriado: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ]
+    },
+    turno3: {
+      nome: '3º Turno',
+      semana: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '23:59', pct: 0 }
+      ],
+      sabado: [
+        { inicio: '00:00', fim: '01:19', pct: 0 },
+        { inicio: '01:20', fim: '05:00', pct: 162.5 },
+        { inicio: '05:01', fim: '22:00', pct: 75 },
+        { inicio: '22:01', fim: '23:59', pct: 162.5 }
+      ],
+      domingo: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ],
+      feriado: [
+        { inicio: '00:00', fim: '05:00', pct: 200 },
+        { inicio: '05:01', fim: '22:00', pct: 100 },
+        { inicio: '22:01', fim: '23:59', pct: 200 }
+      ]
+    }
   }
 };
 
@@ -517,9 +588,21 @@ function loadConfig() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (!parsed.horariosPonto) parsed.horariosPonto = JSON.parse(JSON.stringify(defaultConfig.horariosPonto));
+      if (!parsed.turnos) {
+        if (parsed.horariosPonto) {
+          parsed.turnos = {
+            turno1: { nome: '1º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
+            turno2: { nome: '2º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
+            turno3: { nome: '3º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) }
+          };
+          delete parsed.horariosPonto;
+        } else {
+          parsed.turnos = JSON.parse(JSON.stringify(defaultConfig.turnos));
+        }
+      }
       if (!parsed.noturnoInicio) parsed.noturnoInicio = defaultConfig.noturnoInicio;
       if (!parsed.noturnoFim) parsed.noturnoFim = defaultConfig.noturnoFim;
+      if (typeof parsed.noturnoHoraReduzida !== 'boolean') parsed.noturnoHoraReduzida = defaultConfig.noturnoHoraReduzida;
       if (!parsed.intervalos) parsed.intervalos = JSON.parse(JSON.stringify(defaultConfig.intervalos));
       return parsed;
     }
@@ -536,6 +619,7 @@ function salvarConfig(showToast) {
   config.pctNoturno = parseFloat(document.getElementById('pctNoturno').value) || 0;
   config.noturnoInicio = document.getElementById('noturnoInicio').value || defaultConfig.noturnoInicio;
   config.noturnoFim = document.getElementById('noturnoFim').value || defaultConfig.noturnoFim;
+  config.noturnoHoraReduzida = document.getElementById('noturnoHoraReduzida').checked;
 
   config.intervalos = {
     almocoAtivo: document.getElementById('almocoAtivo').checked,
@@ -556,10 +640,11 @@ function salvarConfig(showToast) {
   });
 
   sincronizarDraftAtual();
-  config.horariosPonto = horariosDraft;
+  config.turnos = turnosDraft;
 
   salvarConfigSilent();
   renderTiersCalc();
+  popularSelectTurno();
   if (showToast) {
     const t = document.getElementById('toast');
     t.classList.add('show');
@@ -643,24 +728,17 @@ function renderHorariosPonto() {
   const container = document.getElementById('horariosPontoContainer');
   if (!container) return;
   container.innerHTML = '';
-  (horariosDraft[diaHorarioSelecionado] || []).forEach(linha => container.appendChild(buildHorarioRow(linha)));
+  const turno = turnosDraft[turnoSelecionadoConfig];
+  (turno && turno[diaHorarioSelecionado] || []).forEach(linha => container.appendChild(buildHorarioRow(linha)));
 }
 
 function addFaixaHorario() {
   document.getElementById('horariosPontoContainer').appendChild(buildHorarioRow({ inicio: '', fim: '', pct: 0 }));
 }
 
-function lerLinhasHorarioDOM() {
-  return Array.from(document.querySelectorAll('#horariosPontoContainer .horario-row')).map(row => ({
-    inicio: row.querySelector('.horario-inicio').value,
-    fim: row.querySelector('.horario-fim').value,
-    pct: parseFloat(row.querySelector('.horario-pct').value) || 0
-  }));
-}
-
 function sincronizarDraftAtual() {
-  if (!horariosDraft) return;
-  horariosDraft[diaHorarioSelecionado] = lerLinhasHorarioDOM();
+  if (!turnosDraft) return;
+  turnosDraft[turnoSelecionadoConfig][diaHorarioSelecionado] = lerLinhasHorarioDOM();
 }
 
 function selecionarDiaHorario(dia) {
@@ -668,6 +746,34 @@ function selecionarDiaHorario(dia) {
   diaHorarioSelecionado = dia;
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
+}
+
+function selecionarTurnoConfig(turno) {
+  sincronizarDraftAtual();
+  turnoSelecionadoConfig = turno;
+  const nomeInput = document.getElementById('turnoNomeInput');
+  if (nomeInput) nomeInput.value = turnosDraft[turno].nome || '';
+  renderHorariosPonto();
+  atualizarBotoesDiaHorario();
+  atualizarBotoesTurnoConfig();
+}
+
+function renomearTurnoAtual() {
+  const nomeInput = document.getElementById('turnoNomeInput');
+  if (!nomeInput || !turnosDraft) return;
+  turnosDraft[turnoSelecionadoConfig].nome = nomeInput.value || turnosDraft[turnoSelecionadoConfig].nome;
+  atualizarBotoesTurnoConfig();
+}
+
+function atualizarBotoesTurnoConfig() {
+  ['turno1', 'turno2', 'turno3'].forEach(t => {
+    const btn = document.getElementById('turnoConfigBtn-' + t);
+    if (!btn) return;
+    btn.textContent = (turnosDraft[t] && turnosDraft[t].nome) || t;
+    btn.style.cssText = t === turnoSelecionadoConfig
+      ? 'flex:1; margin-top:0; padding:8px; font-size:12px; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
+      : 'flex:1; margin-top:0; padding:8px; font-size:12px;';
+  });
 }
 
 function atualizarBotoesDiaHorario() {
@@ -678,6 +784,14 @@ function atualizarBotoesDiaHorario() {
       ? 'flex:1; margin-top:0; padding:8px; font-size:12px; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
       : 'flex:1; margin-top:0; padding:8px; font-size:12px;';
   });
+}
+
+function lerLinhasHorarioDOM() {
+  return Array.from(document.querySelectorAll('#horariosPontoContainer .horario-row')).map(row => ({
+    inicio: row.querySelector('.horario-inicio').value,
+    fim: row.querySelector('.horario-fim').value,
+    pct: parseFloat(row.querySelector('.horario-pct').value) || 0
+  }));
 }
 
 function horaParaMinutos(hhmm) {
@@ -701,8 +815,41 @@ function getTipoDia(date, forcarFeriado) {
   return 'semana';
 }
 
+const TURNO_PONTO_KEY = 'horasApp_turnoPontoSelecionado_v1';
+
+function popularSelectTurno() {
+  const select = document.getElementById('turnoPontoSelect');
+  if (!select) return;
+  const turnos = config.turnos || defaultConfig.turnos;
+  const valorAtual = select.value || localStorage.getItem(TURNO_PONTO_KEY) || 'turno1';
+  select.innerHTML = '';
+  Object.keys(turnos).forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = turnos[id].nome || id;
+    select.appendChild(opt);
+  });
+  if (turnos[valorAtual]) select.value = valorAtual;
+}
+
+function salvarTurnoPontoSelecionado() {
+  const select = document.getElementById('turnoPontoSelect');
+  if (select) localStorage.setItem(TURNO_PONTO_KEY, select.value);
+}
+
+function turnoAtivoId() {
+  const select = document.getElementById('turnoPontoSelect');
+  return (select && select.value) || 'turno1';
+}
+
+function horariosDoTurnoAtivo() {
+  const turnos = config.turnos || defaultConfig.turnos;
+  return turnos[turnoAtivoId()] || turnos.turno1 || defaultConfig.turnos.turno1;
+}
+
 function classificarMinuto(tipoDia, minutoDoDia) {
-  const janelas = (config.horariosPonto && config.horariosPonto[tipoDia]) || [];
+  const horarios = horariosDoTurnoAtivo();
+  const janelas = (horarios && horarios[tipoDia]) || [];
   for (const j of janelas) {
     const ini = horaParaMinutos(j.inicio);
     const fim = horaParaMinutos(j.fim);
@@ -724,7 +871,8 @@ function paraDatetimeLocal(date) {
 function iniciarPonto() {
   const inicio = Date.now();
   const feriado = document.getElementById('pontoFeriado').checked;
-  localStorage.setItem(PONTO_KEY, JSON.stringify({ inicio, feriado }));
+  const turno = document.getElementById('turnoPontoSelect').value;
+  localStorage.setItem(PONTO_KEY, JSON.stringify({ inicio, feriado, turno }));
   document.getElementById('pontoEntradaInput').value = paraDatetimeLocal(new Date(inicio));
   document.getElementById('pontoSaidaInput').value = '';
   ultimaCategoriaPonto = null;
@@ -803,7 +951,8 @@ function preencherCamposComBuckets(buckets, inicio, minutosNoturno) {
   delete restantes['normal'];
 
   if (typeof minutosNoturno === 'number') {
-    const hmNoturno = decimalParaHM(minutosNoturno / 60);
+    const fator = config.noturnoHoraReduzida ? (60 / 52.5) : 1;
+    const hmNoturno = decimalParaHM((minutosNoturno / 60) * fator);
     document.getElementById('horasNoturnoH').value = hmNoturno.h;
     document.getElementById('horasNoturnoM').value = hmNoturno.m;
   }
@@ -947,6 +1096,12 @@ function atualizarUIPonto() {
     document.getElementById('pontoElapsedWrap').classList.remove('hidden');
     document.getElementById('pontoFeriado').checked = !!dados.feriado;
 
+    const selectTurno = document.getElementById('turnoPontoSelect');
+    if (selectTurno) {
+      if (dados.turno) selectTurno.value = dados.turno;
+      selectTurno.disabled = true;
+    }
+
     const cardPonto = document.getElementById('cardPonto');
     if (cardPonto && cardPonto.classList.contains('collapsed')) {
       cardPonto.classList.remove('collapsed');
@@ -983,6 +1138,8 @@ function atualizarUIPonto() {
     document.getElementById('pontoBotoesInativo').classList.remove('hidden');
     document.getElementById('pontoBotoesAtivo').classList.add('hidden');
     document.getElementById('pontoElapsedWrap').classList.add('hidden');
+    const selectTurno = document.getElementById('turnoPontoSelect');
+    if (selectTurno) selectTurno.disabled = false;
   }
 }
 
@@ -1521,6 +1678,7 @@ function initSettingsFields() {
   document.getElementById('pctNoturno').value = config.pctNoturno;
   document.getElementById('noturnoInicio').value = config.noturnoInicio || defaultConfig.noturnoInicio;
   document.getElementById('noturnoFim').value = config.noturnoFim || defaultConfig.noturnoFim;
+  document.getElementById('noturnoHoraReduzida').checked = typeof config.noturnoHoraReduzida === 'boolean' ? config.noturnoHoraReduzida : defaultConfig.noturnoHoraReduzida;
 
   const intervalos = config.intervalos || defaultConfig.intervalos;
   document.getElementById('almocoAtivo').checked = !!intervalos.almocoAtivo;
@@ -1533,15 +1691,19 @@ function initSettingsFields() {
   document.getElementById('baseCalcPericulosidade').value = config.baseCalcPericulosidade;
   renderTiersSettings();
 
-  horariosDraft = JSON.parse(JSON.stringify(config.horariosPonto || defaultConfig.horariosPonto));
+  turnosDraft = JSON.parse(JSON.stringify(config.turnos || defaultConfig.turnos));
+  const nomeInput = document.getElementById('turnoNomeInput');
+  if (nomeInput) nomeInput.value = turnosDraft[turnoSelecionadoConfig].nome || '';
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
+  atualizarBotoesTurnoConfig();
 }
 
 initSettingsFields();
 renderTiersCalc();
 setHistoricoView(historicoView);
 inicializarCardsColapsaveis();
+popularSelectTurno();
 document.getElementById('pontoNotificar').checked = localStorage.getItem(PONTO_NOTIFICAR_KEY) === '1';
 atualizarUIPonto();
 if (!document.getElementById('dataRegistro').value) {
