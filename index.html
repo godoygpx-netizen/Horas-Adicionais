@@ -367,6 +367,11 @@
         <label>Nome deste turno</label>
         <input type="text" id="turnoNomeInput" onchange="renomearTurnoAtual()">
       </div>
+      <div class="field">
+        <label>Horário de início típico</label>
+        <input type="time" id="turnoInicioTipicoInput" onchange="atualizarInicioTipicoAtual()">
+        <div class="hint">Usado só para avisar se você selecionou o turno errado ao iniciar o ponto — não afeta o cálculo.</div>
+      </div>
       <div style="display:flex; gap:6px; margin-bottom:12px;">
         <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
         <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
@@ -508,6 +513,7 @@ const defaultConfig = {
   turnos: {
     turno1: {
       nome: '1º Turno',
+      inicioTipico: '06:00',
       semana: [
         { inicio: '00:00', fim: '01:19', pct: 0 },
         { inicio: '01:20', fim: '05:00', pct: 162.5 },
@@ -532,6 +538,7 @@ const defaultConfig = {
     },
     turno2: {
       nome: '2º Turno',
+      inicioTipico: '14:00',
       semana: [
         { inicio: '00:00', fim: '01:19', pct: 0 },
         { inicio: '01:20', fim: '05:00', pct: 162.5 },
@@ -556,6 +563,7 @@ const defaultConfig = {
     },
     turno3: {
       nome: '3º Turno',
+      inicioTipico: '22:00',
       semana: [
         { inicio: '00:00', fim: '01:19', pct: 0 },
         { inicio: '01:20', fim: '05:00', pct: 162.5 },
@@ -591,15 +599,20 @@ function loadConfig() {
       if (!parsed.turnos) {
         if (parsed.horariosPonto) {
           parsed.turnos = {
-            turno1: { nome: '1º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
-            turno2: { nome: '2º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
-            turno3: { nome: '3º Turno', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) }
+            turno1: { nome: '1º Turno', inicioTipico: '06:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
+            turno2: { nome: '2º Turno', inicioTipico: '14:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
+            turno3: { nome: '3º Turno', inicioTipico: '22:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) }
           };
           delete parsed.horariosPonto;
         } else {
           parsed.turnos = JSON.parse(JSON.stringify(defaultConfig.turnos));
         }
       }
+      Object.keys(defaultConfig.turnos).forEach(t => {
+        if (parsed.turnos[t] && !parsed.turnos[t].inicioTipico) {
+          parsed.turnos[t].inicioTipico = defaultConfig.turnos[t].inicioTipico;
+        }
+      });
       if (!parsed.noturnoInicio) parsed.noturnoInicio = defaultConfig.noturnoInicio;
       if (!parsed.noturnoFim) parsed.noturnoFim = defaultConfig.noturnoFim;
       if (typeof parsed.noturnoHoraReduzida !== 'boolean') parsed.noturnoHoraReduzida = defaultConfig.noturnoHoraReduzida;
@@ -753,6 +766,8 @@ function selecionarTurnoConfig(turno) {
   turnoSelecionadoConfig = turno;
   const nomeInput = document.getElementById('turnoNomeInput');
   if (nomeInput) nomeInput.value = turnosDraft[turno].nome || '';
+  const inicioTipicoInput = document.getElementById('turnoInicioTipicoInput');
+  if (inicioTipicoInput) inicioTipicoInput.value = turnosDraft[turno].inicioTipico || '';
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
   atualizarBotoesTurnoConfig();
@@ -763,6 +778,12 @@ function renomearTurnoAtual() {
   if (!nomeInput || !turnosDraft) return;
   turnosDraft[turnoSelecionadoConfig].nome = nomeInput.value || turnosDraft[turnoSelecionadoConfig].nome;
   atualizarBotoesTurnoConfig();
+}
+
+function atualizarInicioTipicoAtual() {
+  const input = document.getElementById('turnoInicioTipicoInput');
+  if (!input || !turnosDraft) return;
+  turnosDraft[turnoSelecionadoConfig].inicioTipico = input.value;
 }
 
 function atualizarBotoesTurnoConfig() {
@@ -792,6 +813,33 @@ function lerLinhasHorarioDOM() {
     fim: row.querySelector('.horario-fim').value,
     pct: parseFloat(row.querySelector('.horario-pct').value) || 0
   }));
+}
+
+const TOLERANCIA_TURNO_MIN = 90;
+
+function diferencaCircularMinutos(a, b) {
+  const diff = Math.abs(a - b) % 1440;
+  return Math.min(diff, 1440 - diff);
+}
+
+function verificarTurnoCompativel() {
+  const entradaVal = document.getElementById('pontoEntradaInput').value;
+  if (!entradaVal) return;
+
+  const turnoId = document.getElementById('turnoPontoSelect').value;
+  const turnos = config.turnos || defaultConfig.turnos;
+  const turno = turnos[turnoId];
+  if (!turno || !turno.inicioTipico) return;
+
+  const entrada = new Date(entradaVal);
+  const minutoEntrada = entrada.getHours() * 60 + entrada.getMinutes();
+  const minutoTipico = horaParaMinutos(turno.inicioTipico);
+  const diff = diferencaCircularMinutos(minutoEntrada, minutoTipico);
+
+  if (diff > TOLERANCIA_TURNO_MIN) {
+    const horaEntrada = `${String(entrada.getHours()).padStart(2, '0')}:${String(entrada.getMinutes()).padStart(2, '0')}`;
+    alert(`⚠️ O horário de entrada (${horaEntrada}) está bem diferente do horário típico do "${turno.nome}" (por volta de ${turno.inicioTipico}). Confira se selecionou o turno certo.`);
+  }
 }
 
 function horaParaMinutos(hhmm) {
@@ -877,6 +925,7 @@ function iniciarPonto() {
   document.getElementById('pontoSaidaInput').value = '';
   ultimaCategoriaPonto = null;
   atualizarUIPonto();
+  verificarTurnoCompativel();
 }
 
 function cancelarPonto() {
@@ -989,6 +1038,8 @@ function recalcularPonto() {
     return;
   }
 
+  verificarTurnoCompativel();
+
   const inicio = new Date(entradaVal).getTime();
   const fim = new Date(saidaVal).getTime();
   const { totalMinutos, buckets, minutosNoturno, minutosIntervalo } = classificarPeriodo(inicio, fim, forcarFeriado);
@@ -1083,6 +1134,7 @@ function checarMudancaCategoria(forcarFeriado) {
 
 function pontoEntradaAlterada() {
   if (localStorage.getItem(PONTO_KEY)) atualizarUIPonto();
+  verificarTurnoCompativel();
 }
 
 function atualizarUIPonto() {
@@ -1236,12 +1288,17 @@ function calcular() {
   const pontoEntradaVal = document.getElementById('pontoEntradaInput').value;
   const pontoSaidaVal = document.getElementById('pontoSaidaInput').value;
 
+  const turnoId = document.getElementById('turnoPontoSelect').value;
+  const turnoNome = ((config.turnos || defaultConfig.turnos)[turnoId] || {}).nome || turnoId;
+
   ultimoCalculo = {
     data: document.getElementById('dataRegistro').value || '',
     ciclo: getCicloChave(document.getElementById('dataRegistro').value),
     linhas,
     horasExtrasTotal,
-    total
+    total,
+    turno: turnoId,
+    turnoNome
   };
 
   if (pontoEntradaVal && pontoSaidaVal) {
@@ -1298,6 +1355,11 @@ function editarRegistro(id) {
   if (!r) return;
 
   editandoId = id;
+
+  const selectTurno = document.getElementById('turnoPontoSelect');
+  if (selectTurno && r.turno && (config.turnos || defaultConfig.turnos)[r.turno]) {
+    selectTurno.value = r.turno;
+  }
 
   document.getElementById('dataRegistro').value = r.data || '';
   atualizarDiaSemana();
@@ -1508,23 +1570,31 @@ function renderHistorico() {
       const subtotal = entradas.reduce((s, r) => s + r.total, 0);
       const horasExtrasCiclo = entradas.reduce((s, r) => s + (r.horasExtrasTotal || 0), 0);
 
-      const porFaixa = {};
+      const porFaixaHoras = {};
+      const porFaixaValor = {};
       entradas.forEach(r => {
         r.linhas.filter(l => l.tipo === 'he').forEach(l => {
-          porFaixa[l.nome] = (porFaixa[l.nome] || 0) + l.horas;
+          porFaixaHoras[l.nome] = (porFaixaHoras[l.nome] || 0) + l.horas;
+          porFaixaValor[l.nome] = (porFaixaValor[l.nome] || 0) + l.valor;
         });
       });
-      const faixasOrdenadas = Object.keys(porFaixa).sort((a, b) => {
+      const faixasOrdenadas = Object.keys(porFaixaHoras).sort((a, b) => {
         const pctA = parseFloat(a.replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
         const pctB = parseFloat(b.replace(/[^\d,.]/g, '').replace(',', '.')) || 0;
         return pctA - pctB;
       });
+      const valorTotalHE = Object.values(porFaixaValor).reduce((s, v) => s + v, 0);
       const faixasHtml = faixasOrdenadas.map(nome => `
         <div style="display:flex; justify-content:space-between; font-size:12px; color:#b8c9dc; padding:4px 0;">
-          <span>${nome}</span>
-          <span>${fmtHM(porFaixa[nome])}</span>
+          <span>${nome}<span class="sub" style="display:block; font-size:10px; color:#5f7d99;">${fmtHM(porFaixaHoras[nome])}</span></span>
+          <span>R$ ${fmt(porFaixaValor[nome])}</span>
         </div>
-      `).join('');
+      `).join('') + (faixasOrdenadas.length > 0 ? `
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#8fd4a8; font-weight:600; padding:6px 0 0; margin-top:4px; border-top:1px solid #1e3450;">
+          <span>Total de horas extras</span>
+          <span>${fmtHM(horasExtrasCiclo)} · R$ ${fmt(valorTotalHE)}</span>
+        </div>
+      ` : '');
 
       const regPericulosidade = entradas.find(r => r.periculosidadeCiclo);
       const periculosidadeHtml = regPericulosidade ? `
@@ -1587,7 +1657,10 @@ function renderHistorico() {
         <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" onclick="toggleDetalhe('${r.id}')">
           <div style="display:flex; align-items:center; gap:10px;">
             <span id="seta-${r.id}" style="color:#5f7d99; font-size:11px; display:inline-block; transition: transform .2s;">▶</span>
-            <span style="font-size:15px; font-weight:600; color:#e8edf4;">${formatarData(r.data)}<span style="font-weight:400; color:#7fa8cc; font-size:11px;"> (${diaSemanaAbrev(r.data)})</span></span>
+            <div>
+              <div style="font-size:15px; font-weight:600; color:#e8edf4;">${formatarData(r.data)}<span style="font-weight:400; color:#7fa8cc; font-size:11px;"> (${diaSemanaAbrev(r.data)})</span></div>
+              ${r.turnoNome ? `<div style="font-size:11px; color:#5f7d99;">${r.turnoNome}</div>` : ''}
+            </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
             <span style="color:#a8f0c0; font-weight:600; font-size:15px;">R$ ${fmt(r.total)}</span>
@@ -1694,6 +1767,8 @@ function initSettingsFields() {
   turnosDraft = JSON.parse(JSON.stringify(config.turnos || defaultConfig.turnos));
   const nomeInput = document.getElementById('turnoNomeInput');
   if (nomeInput) nomeInput.value = turnosDraft[turnoSelecionadoConfig].nome || '';
+  const inicioTipicoInput = document.getElementById('turnoInicioTipicoInput');
+  if (inicioTipicoInput) inicioTipicoInput.value = turnosDraft[turnoSelecionadoConfig].inicioTipico || '';
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
   atualizarBotoesTurnoConfig();
