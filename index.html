@@ -721,6 +721,23 @@ function paraDatetimeLocal(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function processarAcaoPorURL() {
+  const params = new URLSearchParams(window.location.search);
+  const acao = params.get('acao');
+  if (!acao) return;
+
+  const turnoAtivo = !!localStorage.getItem(PONTO_KEY);
+
+  if (acao === 'iniciar' && !turnoAtivo) {
+    iniciarPonto();
+  } else if (acao === 'finalizar' && turnoAtivo) {
+    finalizarPonto();
+  }
+
+  const novaUrl = window.location.pathname;
+  window.history.replaceState({}, document.title, novaUrl);
+}
+
 function iniciarPonto() {
   const inicio = Date.now();
   const feriado = document.getElementById('pontoFeriado').checked;
@@ -1548,6 +1565,7 @@ if (!document.getElementById('dataRegistro').value) {
   document.getElementById('dataRegistro').valueAsDate = new Date();
 }
 atualizarDiaSemana();
+processarAcaoPorURL();
 
 // PWA manifest + icon (inline, no external files needed)
 const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="96" fill="#1565c0"/><text x="256" y="330" font-size="260" text-anchor="middle" fill="white" font-family="Arial, sans-serif">💰</text></svg>`;
