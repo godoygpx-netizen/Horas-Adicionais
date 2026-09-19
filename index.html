@@ -61,6 +61,9 @@
   .card.collapsed h2 { margin-bottom: 0; }
   .card.collapsed > *:not(h2) { display: none !important; }
   .card-seta { font-size: 11px; color: #5f7d99; }
+  .ponto-tela-grande #pontoElapsed { font-size: 44px !important; }
+  .ponto-tela-grande #pontoValorAoVivo { font-size: 32px !important; }
+  .ponto-tela-grande #pontoCategoriaAtual { font-size: 16px !important; }
   .field { margin-bottom: 12px; }
   .field:last-child { margin-bottom: 0; }
   .field label {
@@ -357,6 +360,27 @@
     </div>
 
     <div class="card">
+      <h2>Aparência do Ponto</h2>
+      <div class="checkbox-row">
+        <input type="checkbox" id="visorTelaGrande">
+        <label for="visorTelaGrande">Tela grande (números maiores)</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="visorManterTelaLigada">
+        <label for="visorManterTelaLigada">Manter a tela ligada durante o turno</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="visorMostrarValor">
+        <label for="visorMostrarValor">Mostrar valor em R$ ao vivo</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="visorMostrarCategoria">
+        <label for="visorMostrarCategoria">Mostrar categoria atual ("Agora: ...")</label>
+      </div>
+      <div class="hint">"Manter a tela ligada" depende do navegador — se não funcionar no seu aparelho, a tela pode apagar normalmente.</div>
+    </div>
+
+    <div class="card">
       <h2>Horários do Ponto</h2>
       <div style="display:flex; gap:6px; margin-bottom:10px;">
         <button type="button" id="turnoConfigBtn-turno1" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno1')">1º Turno</button>
@@ -489,6 +513,12 @@ let turnoSelecionadoConfig = 'turno1';
 let diaHorarioSelecionado = 'semana';
 
 const defaultConfig = {
+  pontoVisor: {
+    telaGrande: false,
+    manterTelaLigada: false,
+    mostrarValor: true,
+    mostrarCategoria: true
+  },
   salarioHora: 33.57,
   pctNoturno: 50,
   noturnoInicio: '22:00',
@@ -616,6 +646,7 @@ function loadConfig() {
       if (!parsed.noturnoInicio) parsed.noturnoInicio = defaultConfig.noturnoInicio;
       if (!parsed.noturnoFim) parsed.noturnoFim = defaultConfig.noturnoFim;
       if (typeof parsed.noturnoHoraReduzida !== 'boolean') parsed.noturnoHoraReduzida = defaultConfig.noturnoHoraReduzida;
+      if (!parsed.pontoVisor) parsed.pontoVisor = JSON.parse(JSON.stringify(defaultConfig.pontoVisor));
       if (!parsed.intervalos) parsed.intervalos = JSON.parse(JSON.stringify(defaultConfig.intervalos));
       return parsed;
     }
@@ -630,6 +661,15 @@ function salvarConfigSilent() {
 function salvarConfig(showToast) {
   config.salarioHora = parseFloat(document.getElementById('salarioHora').value) || 0;
   config.pctNoturno = parseFloat(document.getElementById('pctNoturno').value) || 0;
+
+  config.pontoVisor = {
+    telaGrande: document.getElementById('visorTelaGrande').checked,
+    manterTelaLigada: document.getElementById('visorManterTelaLigada').checked,
+    mostrarValor: document.getElementById('visorMostrarValor').checked,
+    mostrarCategoria: document.getElementById('visorMostrarCategoria').checked
+  };
+  aplicarAparenciaPonto();
+
   config.noturnoInicio = document.getElementById('noturnoInicio').value || defaultConfig.noturnoInicio;
   config.noturnoFim = document.getElementById('noturnoFim').value || defaultConfig.noturnoFim;
   config.noturnoHoraReduzida = document.getElementById('noturnoHoraReduzida').checked;
@@ -847,6 +887,46 @@ function horaParaMinutos(hhmm) {
   const [h, m] = hhmm.split(':').map(Number);
   return (h || 0) * 60 + (m || 0);
 }
+
+let wakeLockPonto = null;
+
+function aplicarAparenciaPonto() {
+  const visor = config.pontoVisor || defaultConfig.pontoVisor;
+  const cardPonto = document.getElementById('cardPonto');
+  if (cardPonto) cardPonto.classList.toggle('ponto-tela-grande', !!visor.telaGrande);
+
+  const valor = document.getElementById('pontoValorAoVivo');
+  if (valor) valor.style.display = visor.mostrarValor === false ? 'none' : '';
+
+  const categoria = document.getElementById('pontoCategoriaAtual');
+  if (categoria) categoria.style.display = visor.mostrarCategoria === false ? 'none' : '';
+}
+
+async function ativarWakeLockSeNecessario() {
+  const visor = config.pontoVisor || defaultConfig.pontoVisor;
+  if (!visor.manterTelaLigada) return;
+  if (!('wakeLock' in navigator)) return;
+  if (wakeLockPonto) return;
+  try {
+    wakeLockPonto = await navigator.wakeLock.request('screen');
+    wakeLockPonto.addEventListener('release', () => { wakeLockPonto = null; });
+  } catch (e) {
+    wakeLockPonto = null;
+  }
+}
+
+function liberarWakeLockPonto() {
+  if (wakeLockPonto) {
+    wakeLockPonto.release().catch(() => {});
+    wakeLockPonto = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && localStorage.getItem(PONTO_KEY)) {
+    ativarWakeLockSeNecessario();
+  }
+});
 
 const PONTO_KEY = 'horasApp_pontoAtivo_v1';
 let pontoInterval = null;
@@ -1154,6 +1234,8 @@ function atualizarUIPonto() {
       selectTurno.disabled = true;
     }
 
+    ativarWakeLockSeNecessario();
+
     const cardPonto = document.getElementById('cardPonto');
     if (cardPonto && cardPonto.classList.contains('collapsed')) {
       cardPonto.classList.remove('collapsed');
@@ -1192,6 +1274,7 @@ function atualizarUIPonto() {
     document.getElementById('pontoElapsedWrap').classList.add('hidden');
     const selectTurno = document.getElementById('turnoPontoSelect');
     if (selectTurno) selectTurno.disabled = false;
+    liberarWakeLockPonto();
   }
 }
 
@@ -1766,6 +1849,13 @@ document.querySelectorAll('.tab').forEach(tab => {
 function initSettingsFields() {
   document.getElementById('salarioHora').value = config.salarioHora;
   document.getElementById('pctNoturno').value = config.pctNoturno;
+
+  const visor = config.pontoVisor || defaultConfig.pontoVisor;
+  document.getElementById('visorTelaGrande').checked = !!visor.telaGrande;
+  document.getElementById('visorManterTelaLigada').checked = !!visor.manterTelaLigada;
+  document.getElementById('visorMostrarValor').checked = visor.mostrarValor !== false;
+  document.getElementById('visorMostrarCategoria').checked = visor.mostrarCategoria !== false;
+
   document.getElementById('noturnoInicio').value = config.noturnoInicio || defaultConfig.noturnoInicio;
   document.getElementById('noturnoFim').value = config.noturnoFim || defaultConfig.noturnoFim;
   document.getElementById('noturnoHoraReduzida').checked = typeof config.noturnoHoraReduzida === 'boolean' ? config.noturnoHoraReduzida : defaultConfig.noturnoHoraReduzida;
@@ -1796,6 +1886,7 @@ renderTiersCalc();
 setHistoricoView(historicoView);
 inicializarCardsColapsaveis();
 popularSelectTurno();
+aplicarAparenciaPonto();
 document.getElementById('pontoNotificar').checked = localStorage.getItem(PONTO_NOTIFICAR_KEY) === '1';
 atualizarUIPonto();
 if (!document.getElementById('dataRegistro').value) {
