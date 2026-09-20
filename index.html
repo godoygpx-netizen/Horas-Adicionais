@@ -939,6 +939,12 @@ let pontoInterval = null;
 function getTipoDia(date, forcarFeriado) {
   if (forcarFeriado) return 'feriado';
   const dia = date.getDay(); // 0=domingo ... 6=sábado
+  const minutoDoDia = date.getHours() * 60 + date.getMinutes();
+
+  // Madrugada de segunda-feira (00:00-05:00) continua valendo a regra de domingo,
+  // já que o turno que vinha do domingo só "vira o dia" à meia-noite.
+  if (dia === 1 && minutoDoDia <= 300) return 'domingo';
+
   if (dia === 0) return 'domingo';
   if (dia === 6) return 'sabado';
   return 'semana';
