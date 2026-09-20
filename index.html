@@ -412,12 +412,14 @@
 
     <div class="card">
       <h2>Horários do Ponto</h2>
-      <div style="display:flex; gap:6px; margin-bottom:12px;">
-        <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
-        <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
-        <button type="button" id="diaBtn-domingo" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('domingo')">Domingo</button>
-        <button type="button" id="diaBtn-feriado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('feriado')">Feriado</button>
+      <div style="display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;">
+        <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
+        <button type="button" id="diaBtn-segundaMadrugada" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;" onclick="selecionarDiaHorario('segundaMadrugada')">Seg 00-05h</button>
+        <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
+        <button type="button" id="diaBtn-domingo" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;" onclick="selecionarDiaHorario('domingo')">Domingo</button>
+        <button type="button" id="diaBtn-feriado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;" onclick="selecionarDiaHorario('feriado')">Feriado</button>
       </div>
+      <div class="hint">"Seg 00-05h" é a madrugada de segunda-feira (00:00 às 05:00) — configure separado, já que esse período costuma seguir a regra de quem trabalhou no domingo, não a de segunda comum.</div>
       <div id="horariosPontoContainer"></div>
       <button class="add-tier" onclick="addFaixaHorario()">+ Adicionar faixa</button>
       <div class="hint">Válido para todos os turnos. O turno usado em cada cálculo é escolhido no seletor "Turno" dentro do card Ponto, na aba Calcular (serve para identificar no histórico e para o aviso de turno errado). Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
@@ -561,6 +563,9 @@ const defaultConfig = {
       { inicio: '01:20', fim: '05:00', pct: 162.5 },
       { inicio: '05:01', fim: '23:59', pct: 0 }
     ],
+    segundaMadrugada: [
+      { inicio: '00:00', fim: '05:00', pct: 200 }
+    ],
     sabado: [
       { inicio: '00:00', fim: '01:19', pct: 0 },
       { inicio: '01:20', fim: '05:00', pct: 162.5 },
@@ -609,6 +614,9 @@ function loadConfig() {
         };
       }
       if (!parsed.horariosPonto) parsed.horariosPonto = JSON.parse(JSON.stringify(defaultConfig.horariosPonto));
+      if (!parsed.horariosPonto.segundaMadrugada) {
+        parsed.horariosPonto.segundaMadrugada = JSON.parse(JSON.stringify(defaultConfig.horariosPonto.segundaMadrugada));
+      }
       if (!parsed.turnos) parsed.turnos = JSON.parse(JSON.stringify(defaultConfig.turnos));
       Object.keys(defaultConfig.turnos).forEach(t => {
         if (parsed.turnos[t] && !parsed.turnos[t].inicioTipico) {
@@ -788,12 +796,12 @@ function selecionarDiaHorario(dia) {
 }
 
 function atualizarBotoesDiaHorario() {
-  ['semana', 'sabado', 'domingo', 'feriado'].forEach(d => {
+  ['semana', 'segundaMadrugada', 'sabado', 'domingo', 'feriado'].forEach(d => {
     const btn = document.getElementById('diaBtn-' + d);
     if (!btn) return;
     btn.style.cssText = d === diaHorarioSelecionado
-      ? 'flex:1; margin-top:0; padding:8px; font-size:12px; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
-      : 'flex:1; margin-top:0; padding:8px; font-size:12px;';
+      ? 'flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
+      : 'flex:1; margin-top:0; padding:8px; font-size:12px; min-width:30%;';
   });
 }
 
@@ -890,9 +898,9 @@ function getTipoDia(date, forcarFeriado) {
   const dia = date.getDay(); // 0=domingo ... 6=sábado
   const minutoDoDia = date.getHours() * 60 + date.getMinutes();
 
-  // Madrugada de segunda-feira (00:00-05:00) continua valendo a regra de domingo,
-  // já que o turno que vinha do domingo só "vira o dia" à meia-noite.
-  if (dia === 1 && minutoDoDia <= 300) return 'domingo';
+  // Madrugada de segunda-feira (00:00-05:00) tem faixa própria e configurável,
+  // já que costuma seguir a regra de quem trabalhou no domingo, não a de segunda comum.
+  if (dia === 1 && minutoDoDia <= 300) return 'segundaMadrugada';
 
   if (dia === 0) return 'domingo';
   if (dia === 6) return 'sabado';
