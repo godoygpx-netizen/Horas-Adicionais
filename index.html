@@ -382,21 +382,36 @@
     </div>
 
     <div class="card">
-      <h2>Horários do Ponto</h2>
-      <div style="display:flex; gap:6px; margin-bottom:10px;">
-        <button type="button" id="turnoConfigBtn-turno1" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno1')">1º Turno</button>
-        <button type="button" id="turnoConfigBtn-turno2" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno2')">2º Turno</button>
-        <button type="button" id="turnoConfigBtn-turno3" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarTurnoConfig('turno3')">3º Turno</button>
-      </div>
+      <h2>Turnos</h2>
       <div class="field">
-        <label>Nome deste turno</label>
-        <input type="text" id="turnoNomeInput" onchange="renomearTurnoAtual()">
+        <label>Nome do 1º Turno</label>
+        <input type="text" id="turno1NomeInput">
       </div>
       <div class="field">
         <label>Horário de início típico</label>
-        <input type="time" id="turnoInicioTipicoInput" onchange="atualizarInicioTipicoAtual()">
-        <div class="hint">Usado só para avisar se você selecionou o turno errado ao iniciar o ponto — não afeta o cálculo.</div>
+        <input type="time" id="turno1InicioInput">
       </div>
+      <div class="field">
+        <label>Nome do 2º Turno</label>
+        <input type="text" id="turno2NomeInput">
+      </div>
+      <div class="field">
+        <label>Horário de início típico</label>
+        <input type="time" id="turno2InicioInput">
+      </div>
+      <div class="field">
+        <label>Nome do 3º Turno</label>
+        <input type="text" id="turno3NomeInput">
+      </div>
+      <div class="field">
+        <label>Horário de início típico</label>
+        <input type="time" id="turno3InicioInput">
+      </div>
+      <div class="hint">O horário de início típico é usado só para avisar se você selecionou o turno errado ao iniciar o ponto. Todos os turnos usam os mesmos horários de hora extra, configurados abaixo em "Horários do Ponto".</div>
+    </div>
+
+    <div class="card">
+      <h2>Horários do Ponto</h2>
       <div style="display:flex; gap:6px; margin-bottom:12px;">
         <button type="button" id="diaBtn-semana" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('semana')">Seg-Sex</button>
         <button type="button" id="diaBtn-sabado" class="btn-secondary" style="flex:1; margin-top:0; padding:8px; font-size:12px;" onclick="selecionarDiaHorario('sabado')">Sábado</button>
@@ -405,7 +420,7 @@
       </div>
       <div id="horariosPontoContainer"></div>
       <button class="add-tier" onclick="addFaixaHorario()">+ Adicionar faixa</button>
-      <div class="hint">Configure os 3 turnos separadamente (nome e horários próprios). O turno usado em cada cálculo é escolhido no seletor "Turno" dentro do card Ponto, na aba Calcular. Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
+      <div class="hint">Válido para todos os turnos. O turno usado em cada cálculo é escolhido no seletor "Turno" dentro do card Ponto, na aba Calcular (serve para identificar no histórico e para o aviso de turno errado). Percentual 0 = hora normal. As faixas de cada dia precisam cobrir as 24h, sem sobras.</div>
     </div>
 
     <div class="card">
@@ -509,8 +524,7 @@ const REGISTROS_KEY = 'horasApp_registros_v1';
 let ultimoCalculo = null;
 let editandoId = null;
 let historicoView = 'resumo';
-let turnosDraft = null;
-let turnoSelecionadoConfig = 'turno1';
+let horariosDraft = null;
 let diaHorarioSelecionado = 'semana';
 
 const defaultConfig = {
@@ -541,82 +555,33 @@ const defaultConfig = {
     { nome: 'Horas Extras 162,5%', pct: 162.5 },
     { nome: 'Horas Extras 200%', pct: 200 }
   ],
+  horariosPonto: {
+    semana: [
+      { inicio: '00:00', fim: '01:19', pct: 0 },
+      { inicio: '01:20', fim: '05:00', pct: 162.5 },
+      { inicio: '05:01', fim: '23:59', pct: 0 }
+    ],
+    sabado: [
+      { inicio: '00:00', fim: '01:19', pct: 0 },
+      { inicio: '01:20', fim: '05:00', pct: 162.5 },
+      { inicio: '05:01', fim: '22:00', pct: 75 },
+      { inicio: '22:01', fim: '23:59', pct: 162.5 }
+    ],
+    domingo: [
+      { inicio: '00:00', fim: '05:00', pct: 200 },
+      { inicio: '05:01', fim: '22:00', pct: 100 },
+      { inicio: '22:01', fim: '23:59', pct: 200 }
+    ],
+    feriado: [
+      { inicio: '00:00', fim: '05:00', pct: 200 },
+      { inicio: '05:01', fim: '22:00', pct: 100 },
+      { inicio: '22:01', fim: '23:59', pct: 200 }
+    ]
+  },
   turnos: {
-    turno1: {
-      nome: '1º Turno',
-      inicioTipico: '06:00',
-      semana: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '23:59', pct: 0 }
-      ],
-      sabado: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '22:00', pct: 75 },
-        { inicio: '22:01', fim: '23:59', pct: 162.5 }
-      ],
-      domingo: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ],
-      feriado: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ]
-    },
-    turno2: {
-      nome: '2º Turno',
-      inicioTipico: '14:00',
-      semana: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '23:59', pct: 0 }
-      ],
-      sabado: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '22:00', pct: 75 },
-        { inicio: '22:01', fim: '23:59', pct: 162.5 }
-      ],
-      domingo: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ],
-      feriado: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ]
-    },
-    turno3: {
-      nome: '3º Turno',
-      inicioTipico: '22:00',
-      semana: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '23:59', pct: 0 }
-      ],
-      sabado: [
-        { inicio: '00:00', fim: '01:19', pct: 0 },
-        { inicio: '01:20', fim: '05:00', pct: 162.5 },
-        { inicio: '05:01', fim: '22:00', pct: 75 },
-        { inicio: '22:01', fim: '23:59', pct: 162.5 }
-      ],
-      domingo: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ],
-      feriado: [
-        { inicio: '00:00', fim: '05:00', pct: 200 },
-        { inicio: '05:01', fim: '22:00', pct: 100 },
-        { inicio: '22:01', fim: '23:59', pct: 200 }
-      ]
-    }
+    turno1: { nome: '1º Turno', inicioTipico: '06:00' },
+    turno2: { nome: '2º Turno', inicioTipico: '14:00' },
+    turno3: { nome: '3º Turno', inicioTipico: '22:00' }
   }
 };
 
@@ -627,18 +592,24 @@ function loadConfig() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (!parsed.turnos) {
-        if (parsed.horariosPonto) {
-          parsed.turnos = {
-            turno1: { nome: '1º Turno', inicioTipico: '06:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
-            turno2: { nome: '2º Turno', inicioTipico: '14:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) },
-            turno3: { nome: '3º Turno', inicioTipico: '22:00', ...JSON.parse(JSON.stringify(parsed.horariosPonto)) }
+      if (parsed.turnos && parsed.turnos.turno1 && parsed.turnos.turno1.semana) {
+        // formato antigo: cada turno tinha seus próprios horários — usa o do 1º turno como o compartilhado
+        if (!parsed.horariosPonto) {
+          parsed.horariosPonto = {
+            semana: parsed.turnos.turno1.semana,
+            sabado: parsed.turnos.turno1.sabado,
+            domingo: parsed.turnos.turno1.domingo,
+            feriado: parsed.turnos.turno1.feriado
           };
-          delete parsed.horariosPonto;
-        } else {
-          parsed.turnos = JSON.parse(JSON.stringify(defaultConfig.turnos));
         }
+        parsed.turnos = {
+          turno1: { nome: parsed.turnos.turno1.nome, inicioTipico: parsed.turnos.turno1.inicioTipico },
+          turno2: { nome: parsed.turnos.turno2.nome, inicioTipico: parsed.turnos.turno2.inicioTipico },
+          turno3: { nome: parsed.turnos.turno3.nome, inicioTipico: parsed.turnos.turno3.inicioTipico }
+        };
       }
+      if (!parsed.horariosPonto) parsed.horariosPonto = JSON.parse(JSON.stringify(defaultConfig.horariosPonto));
+      if (!parsed.turnos) parsed.turnos = JSON.parse(JSON.stringify(defaultConfig.turnos));
       Object.keys(defaultConfig.turnos).forEach(t => {
         if (parsed.turnos[t] && !parsed.turnos[t].inicioTipico) {
           parsed.turnos[t].inicioTipico = defaultConfig.turnos[t].inicioTipico;
@@ -693,8 +664,23 @@ function salvarConfig(showToast) {
     config.tiers.push({ nome, pct });
   });
 
+  config.turnos = {
+    turno1: {
+      nome: document.getElementById('turno1NomeInput').value || defaultConfig.turnos.turno1.nome,
+      inicioTipico: document.getElementById('turno1InicioInput').value || defaultConfig.turnos.turno1.inicioTipico
+    },
+    turno2: {
+      nome: document.getElementById('turno2NomeInput').value || defaultConfig.turnos.turno2.nome,
+      inicioTipico: document.getElementById('turno2InicioInput').value || defaultConfig.turnos.turno2.inicioTipico
+    },
+    turno3: {
+      nome: document.getElementById('turno3NomeInput').value || defaultConfig.turnos.turno3.nome,
+      inicioTipico: document.getElementById('turno3InicioInput').value || defaultConfig.turnos.turno3.inicioTipico
+    }
+  };
+
   sincronizarDraftAtual();
-  config.turnos = turnosDraft;
+  config.horariosPonto = horariosDraft;
 
   salvarConfigSilent();
   renderTiersCalc();
@@ -782,8 +768,7 @@ function renderHorariosPonto() {
   const container = document.getElementById('horariosPontoContainer');
   if (!container) return;
   container.innerHTML = '';
-  const turno = turnosDraft[turnoSelecionadoConfig];
-  (turno && turno[diaHorarioSelecionado] || []).forEach(linha => container.appendChild(buildHorarioRow(linha)));
+  (horariosDraft && horariosDraft[diaHorarioSelecionado] || []).forEach(linha => container.appendChild(buildHorarioRow(linha)));
 }
 
 function addFaixaHorario() {
@@ -791,8 +776,8 @@ function addFaixaHorario() {
 }
 
 function sincronizarDraftAtual() {
-  if (!turnosDraft) return;
-  turnosDraft[turnoSelecionadoConfig][diaHorarioSelecionado] = lerLinhasHorarioDOM();
+  if (!horariosDraft) return;
+  horariosDraft[diaHorarioSelecionado] = lerLinhasHorarioDOM();
 }
 
 function selecionarDiaHorario(dia) {
@@ -800,42 +785,6 @@ function selecionarDiaHorario(dia) {
   diaHorarioSelecionado = dia;
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
-}
-
-function selecionarTurnoConfig(turno) {
-  sincronizarDraftAtual();
-  turnoSelecionadoConfig = turno;
-  const nomeInput = document.getElementById('turnoNomeInput');
-  if (nomeInput) nomeInput.value = turnosDraft[turno].nome || '';
-  const inicioTipicoInput = document.getElementById('turnoInicioTipicoInput');
-  if (inicioTipicoInput) inicioTipicoInput.value = turnosDraft[turno].inicioTipico || '';
-  renderHorariosPonto();
-  atualizarBotoesDiaHorario();
-  atualizarBotoesTurnoConfig();
-}
-
-function renomearTurnoAtual() {
-  const nomeInput = document.getElementById('turnoNomeInput');
-  if (!nomeInput || !turnosDraft) return;
-  turnosDraft[turnoSelecionadoConfig].nome = nomeInput.value || turnosDraft[turnoSelecionadoConfig].nome;
-  atualizarBotoesTurnoConfig();
-}
-
-function atualizarInicioTipicoAtual() {
-  const input = document.getElementById('turnoInicioTipicoInput');
-  if (!input || !turnosDraft) return;
-  turnosDraft[turnoSelecionadoConfig].inicioTipico = input.value;
-}
-
-function atualizarBotoesTurnoConfig() {
-  ['turno1', 'turno2', 'turno3'].forEach(t => {
-    const btn = document.getElementById('turnoConfigBtn-' + t);
-    if (!btn) return;
-    btn.textContent = (turnosDraft[t] && turnosDraft[t].nome) || t;
-    btn.style.cssText = t === turnoSelecionadoConfig
-      ? 'flex:1; margin-top:0; padding:8px; font-size:12px; background:#1a3550; color:#4fc3f7; border-color:#2a5a80;'
-      : 'flex:1; margin-top:0; padding:8px; font-size:12px;';
-  });
 }
 
 function atualizarBotoesDiaHorario() {
@@ -977,13 +926,8 @@ function turnoAtivoId() {
   return (select && select.value) || 'turno1';
 }
 
-function horariosDoTurnoAtivo() {
-  const turnos = config.turnos || defaultConfig.turnos;
-  return turnos[turnoAtivoId()] || turnos.turno1 || defaultConfig.turnos.turno1;
-}
-
 function classificarMinuto(tipoDia, minutoDoDia) {
-  const horarios = horariosDoTurnoAtivo();
+  const horarios = config.horariosPonto || defaultConfig.horariosPonto;
   const janelas = (horarios && horarios[tipoDia]) || [];
   for (const j of janelas) {
     const ini = horaParaMinutos(j.inicio);
@@ -1878,14 +1822,17 @@ function initSettingsFields() {
   document.getElementById('baseCalcPericulosidade').value = config.baseCalcPericulosidade;
   renderTiersSettings();
 
-  turnosDraft = JSON.parse(JSON.stringify(config.turnos || defaultConfig.turnos));
-  const nomeInput = document.getElementById('turnoNomeInput');
-  if (nomeInput) nomeInput.value = turnosDraft[turnoSelecionadoConfig].nome || '';
-  const inicioTipicoInput = document.getElementById('turnoInicioTipicoInput');
-  if (inicioTipicoInput) inicioTipicoInput.value = turnosDraft[turnoSelecionadoConfig].inicioTipico || '';
+  const turnos = config.turnos || defaultConfig.turnos;
+  document.getElementById('turno1NomeInput').value = turnos.turno1.nome || '';
+  document.getElementById('turno1InicioInput').value = turnos.turno1.inicioTipico || '';
+  document.getElementById('turno2NomeInput').value = turnos.turno2.nome || '';
+  document.getElementById('turno2InicioInput').value = turnos.turno2.inicioTipico || '';
+  document.getElementById('turno3NomeInput').value = turnos.turno3.nome || '';
+  document.getElementById('turno3InicioInput').value = turnos.turno3.inicioTipico || '';
+
+  horariosDraft = JSON.parse(JSON.stringify(config.horariosPonto || defaultConfig.horariosPonto));
   renderHorariosPonto();
   atualizarBotoesDiaHorario();
-  atualizarBotoesTurnoConfig();
 }
 
 initSettingsFields();
