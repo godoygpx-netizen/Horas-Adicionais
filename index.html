@@ -1821,6 +1821,14 @@ function renderHistorico() {
         </div>
       ` : `<button class="btn-secondary" style="margin-top:10px;" onclick="aplicarDsrCiclo('${chave}')">${botaoLabelDsr}</button>`;
 
+      const fgtsEstimado = subtotal * 0.08;
+      const fgtsHtml = `
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#7fa8cc; padding:4px 0;">
+          <span>💰 FGTS estimado (8%)</span>
+          <span>R$ ${fmt(fgtsEstimado)}</span>
+        </div>
+      `;
+
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -1831,7 +1839,7 @@ function renderHistorico() {
           </div>
           <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
         </div>
-        ${normaisNoturnoHtml || faixasHtml || periculosidadeHtml || dsrHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${normaisNoturnoHtml}${faixasHtml}${periculosidadeHtml}${dsrHtml}</div>` : ''}
+        ${normaisNoturnoHtml || faixasHtml || periculosidadeHtml || dsrHtml || fgtsHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${normaisNoturnoHtml}${faixasHtml}${periculosidadeHtml}${dsrHtml}${fgtsHtml}</div>` : ''}
         ${botoesPericulosidade}
         ${botoesDsr}
       `;
