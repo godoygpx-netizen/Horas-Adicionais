@@ -426,6 +426,18 @@
     </div>
 
     <div class="card">
+      <h2>Feriados</h2>
+      <div class="row">
+        <div class="field">
+          <input type="date" id="novoFeriadoInput">
+        </div>
+        <button class="btn-secondary" style="width:auto; padding:10px 16px; margin-top:0;" onclick="adicionarFeriado()">+ Adicionar</button>
+      </div>
+      <div id="listaFeriados" style="margin-top:10px;"></div>
+      <div class="hint">Usados para contar automaticamente quantos feriados caem em cada ciclo (16 a 15) ao aplicar o DSR — conta o feriado independente de você ter trabalhado nele ou não.</div>
+    </div>
+
+    <div class="card">
       <h2>Intervalos (Seg-Sex)</h2>
       <div class="checkbox-row">
         <input type="checkbox" id="almocoAtivo">
@@ -530,6 +542,7 @@ let horariosDraft = null;
 let diaHorarioSelecionado = 'semana';
 
 const defaultConfig = {
+  feriados: [],
   pontoVisor: {
     telaGrande: false,
     manterTelaLigada: false,
@@ -627,6 +640,7 @@ function loadConfig() {
       if (!parsed.noturnoFim) parsed.noturnoFim = defaultConfig.noturnoFim;
       if (typeof parsed.noturnoHoraReduzida !== 'boolean') parsed.noturnoHoraReduzida = defaultConfig.noturnoHoraReduzida;
       if (!parsed.pontoVisor) parsed.pontoVisor = JSON.parse(JSON.stringify(defaultConfig.pontoVisor));
+      if (!Array.isArray(parsed.feriados)) parsed.feriados = [];
       if (!parsed.intervalos) parsed.intervalos = JSON.parse(JSON.stringify(defaultConfig.intervalos));
       return parsed;
     }
@@ -1580,6 +1594,44 @@ function aplicarPericulosidadeCiclo(chave) {
   renderHistorico();
 }
 
+function renderListaFeriados() {
+  const container = document.getElementById('listaFeriados');
+  if (!container) return;
+  const feriados = (config.feriados || []).slice().sort();
+
+  if (feriados.length === 0) {
+    container.innerHTML = `<div class="hint" style="margin:0;">Nenhum feriado cadastrado ainda.</div>`;
+    return;
+  }
+
+  container.innerHTML = feriados.map(dataStr => `
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #1e3450;">
+      <span style="font-size:13px; color:#e8edf4;">${formatarData(dataStr)}</span>
+      <button class="remove-tier" style="width:30px;height:30px;font-size:14px;" onclick="removerFeriado('${dataStr}')">×</button>
+    </div>
+  `).join('');
+}
+
+function adicionarFeriado() {
+  const input = document.getElementById('novoFeriadoInput');
+  const dataStr = input.value;
+  if (!dataStr) return;
+
+  if (!config.feriados) config.feriados = [];
+  if (!config.feriados.includes(dataStr)) {
+    config.feriados.push(dataStr);
+    salvarConfigSilent();
+  }
+  input.value = '';
+  renderListaFeriados();
+}
+
+function removerFeriado(dataStr) {
+  config.feriados = (config.feriados || []).filter(d => d !== dataStr);
+  salvarConfigSilent();
+  renderListaFeriados();
+}
+
 function contarDiasCiclo(chave) {
   const [anoIni, mIni] = chave.split('-').map(Number);
   const inicio = new Date(anoIni, mIni - 1, 16);
@@ -1587,15 +1639,22 @@ function contarDiasCiclo(chave) {
   const [anoFim, mFim, dFim] = fimStr.split('-').map(Number);
   const fim = new Date(anoFim, mFim - 1, dFim);
 
+  const feriados = config.feriados || [];
+
   let totalDias = 0;
   let domingos = 0;
+  let feriadosNoCiclo = 0;
   const cursor = new Date(inicio);
   while (cursor <= fim) {
     totalDias++;
-    if (cursor.getDay() === 0) domingos++;
+    const isDomingo = cursor.getDay() === 0;
+    const dataStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
+    const isFeriado = feriados.includes(dataStr);
+    if (isDomingo) domingos++;
+    else if (isFeriado) feriadosNoCiclo++;
     cursor.setDate(cursor.getDate() + 1);
   }
-  return { totalDias, domingos };
+  return { totalDias, domingos, feriados: feriadosNoCiclo };
 }
 
 function aplicarDsrCiclo(chave) {
@@ -1618,14 +1677,7 @@ function aplicarDsrCiclo(chave) {
     return;
   }
 
-  const { totalDias, domingos } = contarDiasCiclo(chave);
-
-  const respostaFeriados = prompt(
-    `Quantos feriados caíram neste ciclo (16 a 15), sem contar domingos?\n\n(Domingos já são contados automaticamente: ${domingos} domingo(s) nesse ciclo)`,
-    '0'
-  );
-  if (respostaFeriados === null) return;
-  const feriados = parseInt(respostaFeriados) || 0;
+  const { totalDias, domingos, feriados } = contarDiasCiclo(chave);
 
   const diasDSR = domingos + feriados;
   const diasUteis = totalDias - diasDSR;
@@ -1636,7 +1688,7 @@ function aplicarDsrCiclo(chave) {
 
   const valor = (base / diasUteis) * diasDSR;
 
-  if (!confirm(`DSR sobre horas extras + adicional noturno deste ciclo:\n\nBase: R$ ${fmt(base)}\nDias úteis: ${diasUteis} · Domingos/feriados: ${diasDSR}\n\nValor do DSR: R$ ${fmt(valor)}\n\nAplicar?`)) return;
+  if (!confirm(`DSR sobre horas extras + adicional noturno deste ciclo:\n\nBase: R$ ${fmt(base)}\nDias úteis: ${diasUteis} · Domingos: ${domingos} · Feriados: ${feriados}\n\nValor do DSR: R$ ${fmt(valor)}\n\nAplicar?`)) return;
 
   registros = registros.filter(r => !(r.ciclo === chave && r.dsrCiclo));
 
@@ -1908,6 +1960,7 @@ document.querySelectorAll('.tab').forEach(tab => {
 function initSettingsFields() {
   document.getElementById('salarioHora').value = config.salarioHora;
   document.getElementById('pctNoturno').value = config.pctNoturno;
+  renderListaFeriados();
 
   const visor = config.pontoVisor || defaultConfig.pontoVisor;
   document.getElementById('visorTelaGrande').checked = !!visor.telaGrande;
