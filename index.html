@@ -1008,6 +1008,75 @@ function estaEmIntervalo(minutoDoDia) {
          checar(intervalos.jantarAtivo, intervalos.jantarInicio, intervalos.jantarFim);
 }
 
+function fmtHoraCurta(d) {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function segmentosDoTurno(inicioMs, fimMs, forcarFeriado) {
+  const totalMinutos = Math.round((fimMs - inicioMs) / 60000);
+  const segPrincipal = [];
+  const segNoturno = [];
+  if (totalMinutos <= 0) return { segPrincipal, segNoturno };
+
+  const noturnoIni = horaParaMinutos(config.noturnoInicio || defaultConfig.noturnoInicio);
+  const noturnoFim = horaParaMinutos(config.noturnoFim || defaultConfig.noturnoFim);
+
+  let chaveAtual = null, inicioAtual = null;
+  let noturnoAberto = false, inicioNoturnoAtual = null;
+
+  const cursor = new Date(inicioMs);
+  for (let i = 0; i < totalMinutos; i++) {
+    const minutoDoDia = cursor.getHours() * 60 + cursor.getMinutes();
+    const tipoDia = getTipoDia(cursor, forcarFeriado);
+    const pulaIntervalo = tipoDia === 'semana' && estaEmIntervalo(minutoDoDia);
+
+    if (pulaIntervalo) {
+      if (chaveAtual !== null) { segPrincipal.push({ chave: chaveAtual, inicio: inicioAtual, fim: new Date(cursor) }); chaveAtual = null; }
+      if (noturnoAberto) { segNoturno.push({ inicio: inicioNoturnoAtual, fim: new Date(cursor) }); noturnoAberto = false; }
+    } else {
+      const c = classificarMinuto(tipoDia, minutoDoDia);
+      const chave = c.cat === 'normal' ? 'normal' : `he${c.pct}`;
+      if (chave !== chaveAtual) {
+        if (chaveAtual !== null) segPrincipal.push({ chave: chaveAtual, inicio: inicioAtual, fim: new Date(cursor) });
+        chaveAtual = chave;
+        inicioAtual = new Date(cursor);
+      }
+
+      const dentroNoturno = noturnoIni <= noturnoFim
+        ? (minutoDoDia >= noturnoIni && minutoDoDia <= noturnoFim)
+        : (minutoDoDia >= noturnoIni || minutoDoDia <= noturnoFim);
+      if (dentroNoturno && !noturnoAberto) { noturnoAberto = true; inicioNoturnoAtual = new Date(cursor); }
+      if (!dentroNoturno && noturnoAberto) { segNoturno.push({ inicio: inicioNoturnoAtual, fim: new Date(cursor) }); noturnoAberto = false; }
+    }
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  if (chaveAtual !== null) segPrincipal.push({ chave: chaveAtual, inicio: inicioAtual, fim: new Date(cursor) });
+  if (noturnoAberto) segNoturno.push({ inicio: inicioNoturnoAtual, fim: new Date(cursor) });
+
+  return { segPrincipal, segNoturno };
+}
+
+function horariosDaLinha(l, r) {
+  if (!r.pontoEntrada || !r.pontoSaida) return '';
+  const inicioMs = new Date(r.pontoEntrada).getTime();
+  const fimMs = new Date(r.pontoSaida).getTime();
+  const { segPrincipal, segNoturno } = segmentosDoTurno(inicioMs, fimMs, false);
+
+  let ranges = [];
+  if (l.tipo === 'normal') {
+    ranges = segPrincipal.filter(s => s.chave === 'normal');
+  } else if (l.tipo === 'he') {
+    const tier = (config.tiers || []).find(t => t.nome === l.nome);
+    const chave = tier ? `he${tier.pct}` : null;
+    if (chave) ranges = segPrincipal.filter(s => s.chave === chave);
+  } else if (l.tipo === 'noturno') {
+    ranges = segNoturno;
+  }
+
+  if (ranges.length === 0) return '';
+  return ranges.map(s => `${fmtHoraCurta(s.inicio)}–${fmtHoraCurta(s.fim)}`).join(', ');
+}
+
 function classificarPeriodo(inicio, fim, forcarFeriado) {
   const totalMinutos = Math.round((fim - inicio) / 60000);
   const buckets = {};
@@ -1869,12 +1938,15 @@ function renderHistorico() {
     entradas.forEach(r => {
       const card = document.createElement('div');
       card.className = 'card';
-      const linhasHtml = r.linhas.map(l => `
+      const linhasHtml = r.linhas.map(l => {
+        const horarioTexto = horariosDaLinha(l, r);
+        return `
         <div class="result-line">
-          <div class="label">${l.nome}${l.horas ? `<span class="sub">${fmtHM(l.horas)}</span>` : ''}</div>
+          <div class="label">${l.nome}${l.horas ? `<span class="sub">${fmtHM(l.horas)}${horarioTexto ? ` · ${horarioTexto}` : ''}</span>` : ''}</div>
           <div class="value">R$ ${fmt(l.valor)}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       const detalheId = `detalhe-${r.id}`;
 
       card.innerHTML = `
