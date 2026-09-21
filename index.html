@@ -1580,6 +1580,90 @@ function aplicarPericulosidadeCiclo(chave) {
   renderHistorico();
 }
 
+function contarDiasCiclo(chave) {
+  const [anoIni, mIni] = chave.split('-').map(Number);
+  const inicio = new Date(anoIni, mIni - 1, 16);
+  const fimStr = dataFimCiclo(chave);
+  const [anoFim, mFim, dFim] = fimStr.split('-').map(Number);
+  const fim = new Date(anoFim, mFim - 1, dFim);
+
+  let totalDias = 0;
+  let domingos = 0;
+  const cursor = new Date(inicio);
+  while (cursor <= fim) {
+    totalDias++;
+    if (cursor.getDay() === 0) domingos++;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return { totalDias, domingos };
+}
+
+function aplicarDsrCiclo(chave) {
+  let registros = carregarRegistros();
+
+  const entradasCiclo = registros.filter(r => r.ciclo === chave && !r.dsrCiclo);
+
+  let valorHE = 0;
+  let valorNoturno = 0;
+  entradasCiclo.forEach(r => {
+    r.linhas.forEach(l => {
+      if (l.tipo === 'he') valorHE += l.valor;
+      if (l.tipo === 'noturno') valorNoturno += l.valor;
+    });
+  });
+
+  const base = valorHE + valorNoturno;
+  if (base <= 0) {
+    alert('Não há horas extras ou adicional noturno lançados nesse ciclo para calcular o DSR.');
+    return;
+  }
+
+  const { totalDias, domingos } = contarDiasCiclo(chave);
+
+  const respostaFeriados = prompt(
+    `Quantos feriados caíram neste ciclo (16 a 15), sem contar domingos?\n\n(Domingos já são contados automaticamente: ${domingos} domingo(s) nesse ciclo)`,
+    '0'
+  );
+  if (respostaFeriados === null) return;
+  const feriados = parseInt(respostaFeriados) || 0;
+
+  const diasDSR = domingos + feriados;
+  const diasUteis = totalDias - diasDSR;
+  if (diasUteis <= 0) {
+    alert('Não foi possível calcular: número de dias úteis inválido.');
+    return;
+  }
+
+  const valor = (base / diasUteis) * diasDSR;
+
+  if (!confirm(`DSR sobre horas extras + adicional noturno deste ciclo:\n\nBase: R$ ${fmt(base)}\nDias úteis: ${diasUteis} · Domingos/feriados: ${diasDSR}\n\nValor do DSR: R$ ${fmt(valor)}\n\nAplicar?`)) return;
+
+  registros = registros.filter(r => !(r.ciclo === chave && r.dsrCiclo));
+
+  const novoRegistro = {
+    id: Date.now().toString(36),
+    salvoEm: new Date().toISOString(),
+    data: dataFimCiclo(chave),
+    ciclo: chave,
+    dsrCiclo: true,
+    linhas: [{ nome: 'DSR sobre horas extras e adicional noturno', horas: null, valor, tipo: 'dsr' }],
+    horasExtrasTotal: 0,
+    total: valor
+  };
+  registros.unshift(novoRegistro);
+
+  localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
+  renderHistorico();
+}
+
+function removerDsrCiclo(chave) {
+  if (!confirm('Remover o DSR aplicado neste ciclo?')) return;
+  let registros = carregarRegistros();
+  registros = registros.filter(r => !(r.ciclo === chave && r.dsrCiclo));
+  localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
+  renderHistorico();
+}
+
 function removerPericulosidadeCiclo(chave) {
   if (!confirm('Remover a periculosidade aplicada neste ciclo?')) return;
   let registros = carregarRegistros();
@@ -1670,6 +1754,21 @@ function renderHistorico() {
         </div>
       ` : `<button class="btn-secondary" style="margin-top:10px;" onclick="aplicarPericulosidadeCiclo('${chave}')">${botaoLabel}</button>`;
 
+      const regDsr = entradas.find(r => r.dsrCiclo);
+      const dsrHtml = regDsr ? `
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:#8fd4a8; padding:4px 0;">
+          <span>📅 DSR sobre HE/noturno</span>
+          <span>R$ ${fmt(regDsr.total)}</span>
+        </div>
+      ` : '';
+      const botaoLabelDsr = regDsr ? '🔄 Recalcular' : '📅 Aplicar DSR';
+      const botoesDsr = regDsr ? `
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn-secondary" style="flex:1; margin-top:0;" onclick="aplicarDsrCiclo('${chave}')">${botaoLabelDsr}</button>
+          <button class="btn-secondary" style="flex:1; margin-top:0; color:#f28b9a;" onclick="removerDsrCiclo('${chave}')">🗑️ Remover</button>
+        </div>
+      ` : `<button class="btn-secondary" style="margin-top:10px;" onclick="aplicarDsrCiclo('${chave}')">${botaoLabelDsr}</button>`;
+
       const card = document.createElement('div');
       card.className = 'card';
       card.innerHTML = `
@@ -1680,8 +1779,9 @@ function renderHistorico() {
           </div>
           <div style="color:#a8f0c0; font-weight:700; font-size:16px; white-space:nowrap; margin-left:10px;">R$ ${fmt(subtotal)}</div>
         </div>
-        ${normaisNoturnoHtml || faixasHtml || periculosidadeHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${normaisNoturnoHtml}${faixasHtml}${periculosidadeHtml}</div>` : ''}
+        ${normaisNoturnoHtml || faixasHtml || periculosidadeHtml || dsrHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${normaisNoturnoHtml}${faixasHtml}${periculosidadeHtml}${dsrHtml}</div>` : ''}
         ${botoesPericulosidade}
+        ${botoesDsr}
       `;
       container.appendChild(card);
     });
