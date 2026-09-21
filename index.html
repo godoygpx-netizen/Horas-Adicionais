@@ -991,7 +991,7 @@ function finalizarPonto() {
   document.getElementById('pontoSaidaInput').value = paraDatetimeLocal(new Date());
   localStorage.removeItem(PONTO_KEY);
   atualizarUIPonto();
-  recalcularPonto();
+  recalcularPonto(true);
 }
 
 function estaEmIntervalo(minutoDoDia) {
@@ -1081,7 +1081,7 @@ function preencherCamposComBuckets(buckets, inicio, minutosNoturno) {
   return restantes;
 }
 
-function recalcularPonto() {
+function recalcularPonto(autoSalvar) {
   const entradaVal = document.getElementById('pontoEntradaInput').value;
   const saidaVal = document.getElementById('pontoSaidaInput').value;
   const forcarFeriado = document.getElementById('pontoFeriado').checked;
@@ -1113,7 +1113,12 @@ function recalcularPonto() {
   }
   const avisoIntervalo = minutosIntervalo > 0 ? `\n\nDescontado ${fmtHM(minutosIntervalo / 60)} de intervalo.` : '';
 
-  alert(`${fmtHM(totalMinutos / 60)} classificadas automaticamente.${avisoIntervalo}${aviso}\n\nConfira o detalhamento abaixo.`);
+  if (autoSalvar) {
+    salvarRegistro();
+    alert(`Turno finalizado: ${fmtHM(totalMinutos / 60)}.${avisoIntervalo}${aviso}\n\nJá salvo no histórico ✓`);
+  } else {
+    alert(`${fmtHM(totalMinutos / 60)} classificadas automaticamente.${avisoIntervalo}${aviso}\n\nConfira o detalhamento abaixo.`);
+  }
 }
 
 function atualizarCalculoAoVivo(inicio) {
