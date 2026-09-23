@@ -1790,6 +1790,35 @@ function removerDsrCiclo(chave) {
   renderHistorico();
 }
 
+function recalcularCiclo(chave) {
+  if (!confirm('Recalcular todos os lançamentos deste ciclo com os valores atuais de Configurações (salário, percentuais, etc.)?\n\nAs horas de cada dia são mantidas — só os valores em R$ são atualizados. Periculosidade e DSR já aplicados precisam ser recalculados separadamente pelos próprios botões.')) return;
+
+  let registros = carregarRegistros();
+  registros.forEach(r => {
+    if (r.ciclo !== chave) return;
+    if (r.periculosidadeCiclo || r.dsrCiclo) return;
+
+    let totalRegistro = 0;
+    r.linhas.forEach(l => {
+      if (l.tipo === 'normal') {
+        l.valor = l.horas * config.salarioHora;
+      } else if (l.tipo === 'noturno') {
+        l.valor = l.horas * config.salarioHora * (config.pctNoturno / 100);
+      } else if (l.tipo === 'he') {
+        const tier = (config.tiers || []).find(t => t.nome === l.nome);
+        const pct = tier ? tier.pct : 0;
+        l.valor = l.horas * config.salarioHora * (1 + pct / 100);
+      }
+      totalRegistro += l.valor;
+    });
+    r.total = totalRegistro;
+  });
+
+  localStorage.setItem(REGISTROS_KEY, JSON.stringify(registros));
+  renderHistorico();
+  alert('Lançamentos deste ciclo recalculados com os valores atuais.');
+}
+
 function removerPericulosidadeCiclo(chave) {
   if (!confirm('Remover a periculosidade aplicada neste ciclo?')) return;
   let registros = carregarRegistros();
@@ -1916,6 +1945,7 @@ function renderHistorico() {
         ${normaisNoturnoHtml || faixasHtml || periculosidadeHtml || dsrHtml || fgtsHtml ? `<div style="margin-top:10px; padding-top:10px; border-top:1px solid #1e3450;">${normaisNoturnoHtml}${faixasHtml}${periculosidadeHtml}${dsrHtml}${fgtsHtml}</div>` : ''}
         ${botoesPericulosidade}
         ${botoesDsr}
+        <button class="btn-secondary" style="margin-top:10px;" onclick="recalcularCiclo('${chave}')">💲 Recalcular ciclo com valores atuais</button>
       `;
       container.appendChild(card);
     });
